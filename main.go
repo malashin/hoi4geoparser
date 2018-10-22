@@ -79,7 +79,7 @@ func main() {
 type Province struct {
 	ID           int
 	RGB          color.RGBA
-	Type         string
+	Type         string // "land" or "sea"
 	IsCoastal    bool
 	Terrain      string
 	Continent    int
@@ -94,10 +94,12 @@ type Province struct {
 type State struct {
 	ID           int
 	Name         string
+	IsCoastal    bool
+	Continent    int
 	PixelCoords  []image.Point
 	CenterPoint  image.Point
-	DistanceTo   map[int]int
 	Provinces    map[int]*Province
+	DistanceTo   map[int]int // Distance to other states.
 	AdjacentTo   map[int]*State
 	ConnectedTo  map[int]*State
 	ImpassableTo map[int]*State
@@ -121,6 +123,7 @@ func readLines(path string) ([]string, error) {
 }
 
 func parseDefinitions() error {
+	fmt.Println("Parsing definition.csv...")
 	definitions, err := readLines(filepath.FromSlash(definitionsPath))
 	if err != nil {
 		return err
@@ -177,6 +180,7 @@ func parseDefinitionsProvince(s string) (p Province, err error) {
 }
 
 func parseAdjacencies() error {
+	fmt.Println("Parsing adjacencies.csv...")
 	adjacencies, err := readLines(filepath.FromSlash(adjacenciesPath))
 	if err != nil {
 		return err
@@ -220,6 +224,7 @@ func parseAdjacenciesState(s string) error {
 }
 
 func parseProvinces() error {
+	fmt.Println("Parsing provinces.bmp...")
 	provincesFile, err := os.Open(filepath.FromSlash(provincesPath))
 	if err != nil {
 		return err
@@ -264,6 +269,7 @@ func parseProvinces() error {
 }
 
 func findProvincesCenterPoints() {
+	fmt.Println("Calculating provinces center point coordinates...")
 	for _, p := range provincesIDMap {
 		p.CenterPoint = findCenterPoint(p.PixelCoords)
 	}
@@ -295,6 +301,7 @@ func findCenterPoint(coords []image.Point) image.Point {
 }
 
 func parseStateFiles() error {
+	fmt.Println("Parsing state files...")
 	stateFiles, err := filepath.Glob(filepath.FromSlash(statesPath) + string(os.PathSeparator) + "*.txt")
 	if err != nil {
 		return err
@@ -323,6 +330,7 @@ func parseState(path string) (state State, err error) {
 
 	state.ID = sID
 	state.Name = sm[2]
+	state.Continent = -1
 	state.DistanceTo = make(map[int]int)
 	state.Provinces = make(map[int]*Province)
 	state.AdjacentTo = make(map[int]*State)
@@ -340,8 +348,20 @@ func parseState(path string) (state State, err error) {
 }
 
 func parseStatesProvinces() {
+	fmt.Println("Parsing provinces in each state...")
 	for _, s1 := range statesMap {
 		for _, p1 := range s1.Provinces {
+			// All provinces in a state should have the same continent number.
+			// Save the first province continent as states continent.
+			if s1.Continent == -1 {
+				s1.Continent = p1.Continent
+			}
+
+			// If there is at least one coastal province in a state, mark state as coastal.
+			if p1.IsCoastal {
+				s1.IsCoastal = true
+			}
+
 			// Fill in each states pixel coordinates.
 			s1.PixelCoords = append(s1.PixelCoords, p1.PixelCoords...)
 
@@ -406,6 +426,7 @@ func parseStatesProvinces() {
 }
 
 func parseStatesDistanceToOtherStates() {
+	fmt.Println("Calculating distance between each state...")
 	for _, s1 := range statesMap {
 		for _, s2 := range statesMap {
 			s1.DistanceTo[s2.ID] = distance(s1.CenterPoint, s2.CenterPoint)
@@ -419,6 +440,7 @@ func distance(c1, c2 image.Point) int {
 }
 
 func saveGeoData() error {
+	fmt.Println("Writing the output file...")
 	// Create new file.
 	f, err := os.Create("hoi4geoparser_data.txt")
 	if err != nil {
@@ -433,12 +455,7 @@ func saveGeoData() error {
 	}
 
 	// Sort the state ids.
-	var statesIDs []int
-	for sID := range statesMap {
-		statesIDs = append(statesIDs, sID)
-	}
-	sort.Ints(statesIDs)
-
+	statesIDs := sortedKeySliceFromStateMap(statesMap)
 	// Iterate over all states in ID sorted order.
 	for _, sID := range statesIDs {
 		// Write the state id into the output file.
@@ -447,13 +464,34 @@ func saveGeoData() error {
 			return err
 		}
 
-		// Sort the DistanceTo map.
-		var statesDistanceToIDs []int
-		for dID := range statesMap[sID].DistanceTo {
-			statesDistanceToIDs = append(statesDistanceToIDs, dID)
+		if len(statesMap[sID].ConnectedTo) > 0 {
+			// Sort the DistanceTo map.
+			statesConnectedToIDs := sortedKeySliceFromStateMap(statesMap[sID].ConnectedTo)
+			// Iterate over all states from ConnectedTo map in ID sorted order.
+			for _, cID := range statesConnectedToIDs {
+				// Write the connected_to@STATE variables.
+				_, err = f.WriteString("\t\t\t\tset_variable = { connected_to@" + strconv.Itoa(cID) + " = 1 }\n")
+				if err != nil {
+					return err
+				}
+			}
 		}
-		sort.Ints(statesDistanceToIDs)
 
+		if len(statesMap[sID].ImpassableTo) > 0 {
+			// Sort the DistanceTo map.
+			statesImpassableToIDs := sortedKeySliceFromStateMap(statesMap[sID].ImpassableTo)
+			// Iterate over all states from ImpassableTo map in ID sorted order.
+			for _, aID := range statesImpassableToIDs {
+				// Write the impassable_to@STATE variables.
+				_, err = f.WriteString("\t\t\t\tset_variable = { impassable_to@" + strconv.Itoa(aID) + " = 1 }\n")
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		// Sort the DistanceTo map.
+		statesDistanceToIDs := sortedKeySliceFromIntMap(statesMap[sID].DistanceTo)
 		// Iterate over all states from DistanceTO map in ID sorted order.
 		for _, dID := range statesDistanceToIDs {
 			// Write the distance_to@STATE variables.
@@ -477,4 +515,20 @@ func saveGeoData() error {
 	}
 
 	return nil
+}
+
+func sortedKeySliceFromStateMap(m map[int]*State) (slice []int) {
+	for k := range m {
+		slice = append(slice, k)
+	}
+	sort.Ints(slice)
+	return slice
+}
+
+func sortedKeySliceFromIntMap(m map[int]int) (slice []int) {
+	for k := range m {
+		slice = append(slice, k)
+	}
+	sort.Ints(slice)
+	return slice
 }
