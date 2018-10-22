@@ -68,7 +68,10 @@ func main() {
 	parseStatesDistanceToOtherStates()
 
 	// Write the output file.
-	saveGeoData()
+	err = saveGeoData()
+	if err != nil {
+		panic(err)
+	}
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
