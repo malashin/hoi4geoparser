@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
+	"image/png"
 	"io/ioutil"
+	"log"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,10 +20,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/freetype"
 	"golang.org/x/image/bmp"
+	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_border_wars"
+// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
+
+var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -27,8 +35,11 @@ var statesPath = modPath + "/history/states"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
-var rState = regexp.MustCompile(`(?s:.*id.*=.*?(\d+).*name.*=.*\"(.+?)\".*provinces.*?=.*?{.*?(\d+.*?)\n.*?}.*})`)
+var rState = regexp.MustCompile(`(?s:.*id.*=.*?(\d+).*name.*=.*\"(.+?)\".*provinces.*?=.*?{.*?([0-9 ]+).*?}.*})`)
+var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
+var provincesImageSize image.Rectangle
+var waterColor = color.RGBA{68, 107, 163, 255}
 
 func main() {
 	// Track start time for benchmarking.
@@ -67,11 +78,75 @@ func main() {
 	// Parse states distance to other states.
 	parseStatesDistanceToOtherStates()
 
-	// Write the output file.
-	err = saveGeoData()
+	// // Write the output file.
+	// err = saveGeoData()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	fmt.Println("Generating state maps...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Read the font data.
+	fontBytes, err := ioutil.ReadFile("smallest_pixel-7.ttf")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	f, err := freetype.ParseFont(fontBytes)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Initialize font's context.
+	fg := image.Black
+	c := freetype.NewContext()
+	c.SetDPI(72.0)
+	c.SetFont(f)
+	c.SetFontSize(10.0)
+	c.SetClip(img.Bounds())
+	c.SetDst(img)
+	c.SetSrc(fg)
+	c.SetHinting(font.HintingNone)
+
+	// Draw state shapes.
+	for _, s := range statesMap {
+		generateRandomStateColor(s, 0)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, s.RenderColor)
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./state_map.png")
 	if err != nil {
 		panic(err)
 	}
+	err = png.Encode(out, img)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Saved 'state_map.png'")
+
+	//Draw state IDs.
+	for _, s := range statesMap {
+		addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, strconv.FormatInt(int64(s.ID), 10))
+	}
+
+	// Save image as PNG.
+	out, err = os.Create("./state_map_with_ids.png")
+	if err != nil {
+		panic(err)
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Saved 'state_map_with_ids.png'")
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -106,6 +181,7 @@ type State struct {
 	AdjacentTo   map[int]*State
 	ConnectedTo  map[int]*State
 	ImpassableTo map[int]*State
+	RenderColor  color.RGBA
 }
 
 // ReadLines reads a whole file
@@ -238,6 +314,8 @@ func parseProvinces() error {
 		return err
 	}
 
+	provincesImageSize.Max = image.Point{provincesImage.Bounds().Max.X, provincesImage.Bounds().Max.Y}
+
 	// Parse each pixel in scanline order.
 	for y := 0; y < provincesImage.Bounds().Max.Y; y++ {
 		for x := 0; x < provincesImage.Bounds().Max.X; x++ {
@@ -339,7 +417,7 @@ func parseState(path string) (state State, err error) {
 	state.AdjacentTo = make(map[int]*State)
 	state.ConnectedTo = make(map[int]*State)
 	state.ImpassableTo = make(map[int]*State)
-	provinces := strings.Split(strings.TrimSpace(sm[3]), " ")
+	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(sm[3], " ")), " ")
 	for _, p := range provinces {
 		pID, err := strconv.Atoi(p)
 		if err != nil {
@@ -534,4 +612,46 @@ func sortedKeySliceFromIntMap(m map[int]int) (slice []int) {
 	}
 	sort.Ints(slice)
 	return slice
+}
+
+func generateRandomLightColor() color.RGBA {
+	max := 255
+	min := 128
+	c := color.RGBA{uint8(rand.Intn(max-min) + min), uint8(rand.Intn(max-min) + min), uint8(rand.Intn(max-min) + min), 255}
+	// if isColorClose(c, waterColor) {
+	// 	c = generateRandomLightColor()
+	// }
+	return c
+}
+
+func isColorClose(a color.RGBA, b color.RGBA) bool {
+	d := math.Sqrt(2*math.Exp2(float64(b.R-a.R)) + 4*math.Exp2(float64(b.G-a.G)) + 3*math.Exp2(float64(b.B-a.B)))
+	// fmt.Printf("%v %v  |  %e  %f  %v\n", a, b, d, d, d < 1000000000000000000000000000000000000)
+	return d < 1000000000000000000000000000000000000
+}
+
+func generateRandomStateColor(s *State, i int) {
+	b := false
+	col := generateRandomLightColor()
+
+	for _, a := range s.AdjacentTo {
+		// fmt.Println(s.ID, col, a.ID, a.RenderColor)
+		if (a.RenderColor != color.RGBA{0, 0, 0, 0}) && (isColorClose(col, a.RenderColor)) {
+			b = true
+			continue
+		}
+	}
+
+	if b && (i < 500) {
+		generateRandomStateColor(s, i+1)
+	}
+
+	s.RenderColor = col
+}
+
+func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, label string) {
+	pt := freetype.Pt(x, y+int(c.PointToFixed(size)>>6))
+	if _, err := c.DrawString(label, pt); err != nil {
+		panic(err)
+	}
 }
