@@ -275,9 +275,14 @@ func parseAdjacencies() error {
 }
 
 func parseAdjacenciesState(s string) error {
+	// Skip commented and empty lines.
+	if strings.HasPrefix(s, "#") || len(s) == 0 {
+		return nil
+	}
+
 	a := strings.Split(s, ";")
 	if len(a) != 10 {
-		return errors.New("\"" + definitionsPath + "\": " + s + ": must contain 10 fields")
+		return errors.New("\"" + adjacenciesPath + "\": " + s + ": must contain 10 fields")
 	}
 
 	id1, err := strconv.Atoi(a[0])
