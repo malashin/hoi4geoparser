@@ -9,7 +9,6 @@ import (
 	"image/draw"
 	"image/png"
 	"io/ioutil"
-	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -84,69 +83,17 @@ func main() {
 	// 	panic(err)
 	// }
 
-	fmt.Println("Generating state maps...")
+	// // Generate state ID map.
+	// err = generateSateIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Create empty image and fill it with blue color (water).
-	img := image.NewRGBA(provincesImageSize)
-	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
-
-	// Read the font data.
-	fontBytes, err := ioutil.ReadFile("smallest_pixel-7.ttf")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	f, err := freetype.ParseFont(fontBytes)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Initialize font's context.
-	fg := image.Black
-	c := freetype.NewContext()
-	c.SetDPI(72.0)
-	c.SetFont(f)
-	c.SetFontSize(10.0)
-	c.SetClip(img.Bounds())
-	c.SetDst(img)
-	c.SetSrc(fg)
-	c.SetHinting(font.HintingNone)
-
-	// Draw state shapes.
-	for _, s := range statesMap {
-		generateRandomStateColor(s, 0)
-		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, s.RenderColor)
-		}
-	}
-
-	// Save image as PNG.
-	out, err := os.Create("./state_map.png")
+	// Generate province map.
+	err = generateProvinceMap()
 	if err != nil {
 		panic(err)
 	}
-	err = png.Encode(out, img)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Saved 'state_map.png'")
-
-	//Draw state IDs.
-	for _, s := range statesMap {
-		addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, strconv.FormatInt(int64(s.ID), 10))
-	}
-
-	// Save image as PNG.
-	out, err = os.Create("./state_map_with_ids.png")
-	if err != nil {
-		panic(err)
-	}
-	err = png.Encode(out, img)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Saved 'state_map_with_ids.png'")
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -161,7 +108,7 @@ type Province struct {
 	IsCoastal    bool
 	Terrain      string
 	Continent    int
-	PixelCoords  []image.Point
+	PixelCoords  map[image.Point]image.Point
 	CenterPoint  image.Point
 	AdjacentTo   map[int]*Province
 	ConnectedTo  map[int]*Province
@@ -174,7 +121,7 @@ type State struct {
 	Name         string
 	IsCoastal    bool
 	Continent    int
-	PixelCoords  []image.Point
+	PixelCoords  map[image.Point]image.Point
 	CenterPoint  image.Point
 	Provinces    map[int]*Province
 	DistanceTo   map[int]int // Distance to other states.
@@ -251,6 +198,7 @@ func parseDefinitionsProvince(s string) (p Province, err error) {
 	if err != nil {
 		return p, err
 	}
+	p.PixelCoords = make(map[image.Point]image.Point)
 	p.AdjacentTo = make(map[int]*Province)
 	p.ConnectedTo = make(map[int]*Province)
 	p.ImpassableTo = make(map[int]*Province)
@@ -330,7 +278,7 @@ func parseProvinces() error {
 			c := provincesImage.At(x, y)
 
 			// Add pixel coordinates to the province that has this RGB value.
-			provincesRGBMap[c].PixelCoords = append(provincesRGBMap[c].PixelCoords, image.Point{x, y})
+			provincesRGBMap[c].PixelCoords[image.Point{x, y}] = image.Point{x, y}
 
 			// Find out the color of the adjacent right and bottom pixels.
 			if x < provincesImage.Bounds().Max.X-1 {
@@ -361,7 +309,7 @@ func findProvincesCenterPoints() {
 	}
 }
 
-func findCenterPoint(coords []image.Point) image.Point {
+func findCenterPoint(coords map[image.Point]image.Point) image.Point {
 	// Find the bounding box of the province from its pixel coordinates.
 	l := math.MaxInt64
 	r := math.MinInt64
@@ -417,6 +365,7 @@ func parseState(path string) (state State, err error) {
 	state.ID = sID
 	state.Name = sm[2]
 	state.Continent = -1
+	state.PixelCoords = make(map[image.Point]image.Point)
 	state.DistanceTo = make(map[int]int)
 	state.Provinces = make(map[int]*Province)
 	state.AdjacentTo = make(map[int]*State)
@@ -449,7 +398,9 @@ func parseStatesProvinces() {
 			}
 
 			// Fill in each states pixel coordinates.
-			s1.PixelCoords = append(s1.PixelCoords, p1.PixelCoords...)
+			for _, pc := range p1.PixelCoords {
+				s1.PixelCoords[pc] = pc
+			}
 
 			// Fill up adjacentTo and connectedTo fields in all states
 			// based on the provinces in those states
@@ -654,9 +605,145 @@ func generateRandomStateColor(s *State, i int) {
 	s.RenderColor = col
 }
 
-func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, label string) {
+func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, label string) error {
 	pt := freetype.Pt(x, y+int(c.PointToFixed(size)>>6))
 	if _, err := c.DrawString(label, pt); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
+}
+
+func generateSateIDMap() error {
+	fmt.Println("Generating state maps...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	for _, s := range statesMap {
+		generateRandomStateColor(s, 0)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, s.RenderColor)
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./state_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'state_map.png'")
+
+	c, err := initFont(img)
+	if err != nil {
+		return err
+	}
+
+	//Draw state IDs.
+	for _, s := range statesMap {
+		err := addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, strconv.FormatInt(int64(s.ID), 10))
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save image as PNG.
+	out, err = os.Create("./state_map_with_ids.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'state_map_with_ids.png'")
+	return nil
+}
+
+func initFont(img *image.RGBA) (*freetype.Context, error) {
+	// Read the font data.
+	fontBytes, err := ioutil.ReadFile("smallest_pixel-7.ttf")
+	if err != nil {
+		return nil, err
+	}
+	f, err := freetype.ParseFont(fontBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize font's context.
+	fg := image.Black
+	c := freetype.NewContext()
+	c.SetDPI(72.0)
+	c.SetFont(f)
+	c.SetFontSize(10.0)
+	c.SetClip(img.Bounds())
+	c.SetDst(img)
+	c.SetSrc(fg)
+	c.SetHinting(font.HintingNone)
+	return c, nil
+}
+
+func generateProvinceMap() error {
+	fmt.Println("Generating province map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	fillCol := color.RGBA{255, 255, 255, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Draw province borders.
+	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, prov := range provincesIDMap {
+		for _, p := range prov.PixelCoords {
+			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, provinceBorderColor)
+			}
+			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, provinceBorderColor)
+			}
+		}
+	}
+
+	// Draw province borders.
+	stateBorderColor := color.RGBA{255, 0, 0, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./province_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'province_map.png'")
+
+	return nil
 }
