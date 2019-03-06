@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"io/ioutil"
 	"math"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/golang/freetype"
 	"golang.org/x/image/bmp"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
 )
 
@@ -89,8 +89,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate province map.
-	err = generateProvinceMap()
+	// // Generate province map.
+	// err = generateProvinceMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate province ID map.
+	err = generateProvinceIDMap()
 	if err != nil {
 		panic(err)
 	}
@@ -614,7 +620,7 @@ func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, labe
 }
 
 func generateSateIDMap() error {
-	fmt.Println("Generating state maps...")
+	fmt.Println("Generating state ID map...")
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -639,6 +645,7 @@ func generateSateIDMap() error {
 	}
 	fmt.Println("Saved 'state_map.png'")
 
+	// Init font.
 	c, err := initFont(img)
 	if err != nil {
 		return err
@@ -719,7 +726,7 @@ func generateProvinceMap() error {
 		}
 	}
 
-	// Draw province borders.
+	// Draw state borders.
 	stateBorderColor := color.RGBA{255, 0, 0, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
@@ -730,6 +737,14 @@ func generateProvinceMap() error {
 			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
 			}
 		}
 	}
@@ -744,6 +759,110 @@ func generateProvinceMap() error {
 		return err
 	}
 	fmt.Println("Saved 'province_map.png'")
+
+	return nil
+}
+
+func generateProvinceIDMap() error {
+	fmt.Println("Generating province ID map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	fillCol := color.RGBA{255, 255, 255, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Scale image up.
+	dst := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X*4, img.Bounds().Max.Y*4))
+	draw.NearestNeighbor.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	img = dst
+
+	// Draw province borders.
+	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, prov := range provincesIDMap {
+		for _, p := range prov.PixelCoords {
+			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4+3, p.Y*4, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+1, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+2, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
+			}
+			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+1, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+2, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
+			}
+		}
+	}
+
+	// Draw state borders.
+	stateBorderColor := color.RGBA{255, 0, 0, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4+3, p.Y*4, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+1, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+2, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+1, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+2, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4-1, p.Y*4, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+1, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+2, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+1, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+2, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4-1, stateBorderColor)
+			}
+		}
+	}
+
+	// Init font.
+	c, err := initFont(img)
+	if err != nil {
+		return err
+	}
+
+	//Draw province IDs.
+	for _, p := range provincesIDMap {
+		err := addLabel(img, c, p.CenterPoint.X*4-7, p.CenterPoint.Y*4-7, 10.0, strconv.FormatInt(int64(p.ID), 10))
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./province_id_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'province_id_map.png'")
 
 	return nil
 }
