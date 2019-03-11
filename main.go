@@ -34,7 +34,10 @@ var statesPath = modPath + "/history/states"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
-var rState = regexp.MustCompile(`(?s:.*id.*=.*?(\d+).*name.*=.*\"(.+?)\".*provinces.*?=.*?{.*?([0-9 ]+).*?}.*})`)
+var rStateID = regexp.MustCompile(`(?s:.*id.*?=.*?(\d+).*)`)
+var rStateName = regexp.MustCompile(`(?s:.*name.*?=.*?\"(.+?)\".*)`)
+var rStateManpower = regexp.MustCompile(`(?s:.*manpower.*?=.*?(\d+).*)`)
+var rStateProvinces = regexp.MustCompile(`(?s:.*provinces.*?=.*?{.*?([0-9 ]+).*?}.*)`)
 var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
@@ -95,8 +98,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate province ID map.
-	err = generateProvinceIDMap()
+	// // Generate province ID map.
+	// err = generateProvinceIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate manpower map.
+	err = generateManpowerMap()
 	if err != nil {
 		panic(err)
 	}
@@ -125,6 +134,7 @@ type Province struct {
 type State struct {
 	ID           int
 	Name         string
+	Manpower     int
 	IsCoastal    bool
 	Continent    int
 	PixelCoords  map[image.Point]image.Point
@@ -348,22 +358,17 @@ func parseState(path string) (state State, err error) {
 		return state, err
 	}
 	s := strings.Replace(string(b), "\r\n", "\n", -1)
-	sm := rState.FindStringSubmatch(s)
-	sID, err := strconv.Atoi(sm[1])
+	state.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
 	if err != nil {
 		return state, err
 	}
-
-	state.ID = sID
-	state.Name = sm[2]
-	state.Continent = -1
-	state.PixelCoords = make(map[image.Point]image.Point)
-	state.DistanceTo = make(map[int]int)
+	state.Name = rStateName.FindStringSubmatch(s)[1]
+	state.Manpower, err = strconv.Atoi(rStateManpower.FindStringSubmatch(s)[1])
+	if err != nil {
+		return state, err
+	}
 	state.Provinces = make(map[int]*Province)
-	state.AdjacentTo = make(map[int]*State)
-	state.ConnectedTo = make(map[int]*State)
-	state.ImpassableTo = make(map[int]*State)
-	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(sm[3], " ")), " ")
+	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
 	for _, p := range provinces {
 		pID, err := strconv.Atoi(p)
 		if err != nil {
@@ -371,6 +376,13 @@ func parseState(path string) (state State, err error) {
 		}
 		state.Provinces[pID] = provincesIDMap[pID]
 	}
+	state.Continent = -1
+	state.PixelCoords = make(map[image.Point]image.Point)
+	state.DistanceTo = make(map[int]int)
+	state.AdjacentTo = make(map[int]*State)
+	state.ConnectedTo = make(map[int]*State)
+	state.ImpassableTo = make(map[int]*State)
+
 	return state, nil
 }
 
@@ -851,4 +863,113 @@ func generateProvinceIDMap() error {
 	fmt.Println("Saved 'province_id_map.png'")
 
 	return nil
+}
+
+func generateManpowerMap() error {
+	fmt.Println("Generating manpower map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Find highest manpower value in a state.
+	mpMin := 200000
+	mpMax := 0
+	for _, s := range statesMap {
+		if s.Manpower > mpMax {
+			mpMax = s.Manpower
+		}
+	}
+	logMin := math.Log10(float64(mpMin))
+	logMax := math.Log10(float64(mpMax))
+	logRange := logMax - logMin
+
+	// Draw state shapes.
+	colorLow := color.RGBA{255, 64, 64, 255}
+	colorMid := color.RGBA{255, 255, 64, 255}
+	colorHigh := color.RGBA{64, 255, 64, 255}
+	gradient := []color.RGBA{colorLow, colorMid, colorHigh}
+
+	for _, s := range statesMap {
+		// mp := float64(s.Manpower) / float64(mpMax)
+		mp := linearToLog(math.Max(float64(s.Manpower), float64(mpMin)), logMin, logRange)
+		fillCol := colorFromGradient(mp, gradient)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Draw state borders.
+	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
+	}
+
+	// Init font.
+	c, err := initFont(img)
+	if err != nil {
+		return err
+	}
+
+	//Draw state manpower values.
+	for _, s := range statesMap {
+		err := addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, intToString(s.Manpower))
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./manpower_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'manpower_map.png'")
+
+	return nil
+}
+
+func linearToLog(n, min, r float64) float64 {
+	return (math.Log10(n) - min) / r
+}
+
+func colorFromGradient(a float64, gradient []color.RGBA) color.RGBA {
+	b := 100 / float64(len(gradient)-1) / 100
+	colorLow := gradient[int(math.Floor(a/b))]
+	colorHigh := gradient[int(math.Ceil(a/b))]
+
+	return color.RGBA{
+		uint8(math.Min(math.Max(float64(colorLow.R)+(float64(colorHigh.R)-float64(colorLow.R))*a, 0), 255)),
+		uint8(math.Min(math.Max(float64(colorLow.G)+(float64(colorHigh.G)-float64(colorLow.G))*a, 0), 255)),
+		uint8(math.Min(math.Max(float64(colorLow.B)+(float64(colorHigh.B)-float64(colorLow.B))*a, 0), 255)),
+		uint8(math.Min(math.Max(float64(colorLow.A)+(float64(colorHigh.A)-float64(colorLow.A))*a, 0), 255))}
+}
+
+func intToString(n int) string {
+	if n < 1000 {
+		return strconv.Itoa(n)
+	}
+	exp := math.Floor(math.Log(float64(n)) / math.Log(1000))
+	return strings.TrimRight(strings.TrimRight(strconv.FormatFloat(float64(n)/math.Pow(1000, exp), 'f', 1, 64), "0"), ".") + string("kMGTPE"[int(exp-1)])
 }
