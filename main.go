@@ -316,28 +316,14 @@ func findProvincesCenterPoints() {
 }
 
 func findCenterPoint(coords map[image.Point]image.Point) image.Point {
-	// Find the bounding box of the province from its pixel coordinates.
-	l := math.MaxInt64
-	r := math.MinInt64
-	t := math.MaxInt64
-	b := math.MinInt64
-	for _, c := range coords {
-		if c.X < l {
-			l = c.X
-		}
-		if c.X > r {
-			r = c.X
-		}
-		if c.Y < t {
-			t = c.Y
-		}
-		if c.Y > b {
-			b = c.Y
-		}
-	}
+	x := 0
+	y := 0
 
-	// Calculate the centerPoint of the bounding box.
-	return image.Point{l + ((r - l) / 2), t + ((b - t) / 2)}
+	for _, c := range coords {
+		x += c.X
+		y += c.Y
+	}
+	return image.Point{int(math.Round(float64(x) / float64(len(coords)))), int(math.Round(float64(y) / float64(len(coords))))}
 }
 
 func parseStateFiles() error {
