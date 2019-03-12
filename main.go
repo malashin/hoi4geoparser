@@ -632,16 +632,28 @@ func generateSateIDMap() error {
 		}
 	}
 
-	// Save image as PNG.
-	out, err := os.Create("./state_map.png")
-	if err != nil {
-		return err
+	// Draw state borders.
+	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
 	}
-	err = png.Encode(out, img)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Saved 'state_map.png'")
 
 	// Init font.
 	c, err := initFont(img)
@@ -658,7 +670,7 @@ func generateSateIDMap() error {
 	}
 
 	// Save image as PNG.
-	out, err = os.Create("./state_map_with_ids.png")
+	out, err := os.Create("./state_map_with_ids.png")
 	if err != nil {
 		return err
 	}
