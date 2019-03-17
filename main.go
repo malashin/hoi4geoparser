@@ -104,8 +104,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate manpower map.
-	err = generateManpowerMap()
+	// // Generate manpower map.
+	// err = generateManpowerMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate sea province map.
+	err = generateSeaProvinceMap()
 	if err != nil {
 		panic(err)
 	}
@@ -984,4 +990,35 @@ func intToString(n int) string {
 	}
 	exp := math.Floor(math.Log(float64(n)) / math.Log(1000))
 	return strings.TrimRight(strings.TrimRight(strconv.FormatFloat(float64(n)/math.Pow(1000, exp), 'f', 1, 64), "0"), ".") + string("kMGTPE"[int(exp-1)])
+}
+
+func generateSeaProvinceMap() error {
+	fmt.Println("Generating sea province map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw sea provinces.
+	for _, prov := range provincesIDMap {
+		if (prov.Type == "sea") || (prov.Type == "lake") {
+			fillCol := generateRandomLightColor()
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./sea_province_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'sea_province_map.png'")
+
+	return nil
 }
