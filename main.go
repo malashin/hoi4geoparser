@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/golang/freetype"
-	"golang.org/x/image/bmp"
+	"github.com/hotei/bmp"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
 )
@@ -30,6 +30,7 @@ var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
+var terrainPath = modPath + "/map/terrain.bmp"
 var statesPath = modPath + "/history/states"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
@@ -110,8 +111,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate sea province map.
-	err = generateSeaProvinceMap()
+	// // Generate sea province map.
+	// err = generateSeaProvinceMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate province-based terrain map.
+	err = generateProvinceBasedTerrainMap()
 	if err != nil {
 		panic(err)
 	}
@@ -1019,6 +1026,60 @@ func generateSeaProvinceMap() error {
 		return err
 	}
 	fmt.Println("Saved 'sea_province_map.png'")
+
+	return nil
+}
+
+func generateProvinceBasedTerrainMap() error {
+	fmt.Println("Generating province-based terrain map...")
+
+	terrainFile, err := os.Open(filepath.FromSlash(terrainPath))
+	if err != nil {
+		return err
+	}
+	defer terrainFile.Close()
+	terrainImage, err := bmp.Decode(terrainFile)
+	if err != nil {
+		return err
+	}
+
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), terrainImage, terrainImage.Bounds().Min, draw.Src)
+
+	for _, p := range provincesIDMap {
+		terrainColors := make(map[color.RGBA]int)
+		if p.Type == "land" {
+			for _, pc := range p.PixelCoords {
+				terrainColors[terrainImage.At(pc.X, pc.Y).(color.RGBA)]++
+			}
+
+			max := 0
+			var terrainColor color.RGBA
+			for c, i := range terrainColors {
+				if i > max {
+					max = i
+					terrainColor = c
+				}
+			}
+
+			r, g, b, a := terrainColor.RGBA()
+
+			for _, pc := range p.PixelCoords {
+				img.Set(pc.X, pc.Y, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./province_based_terrain.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'province_based_terrain.png'")
 
 	return nil
 }
