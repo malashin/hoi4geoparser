@@ -24,13 +24,14 @@ import (
 	"golang.org/x/image/font"
 )
 
-// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
+var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
 var terrainPath = modPath + "/map/terrain.bmp"
+var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
@@ -117,8 +118,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate province-based terrain map.
-	err = generateProvinceBasedTerrainMap()
+	// // Generate province-based terrain map.
+	// err = generateProvinceBasedTerrainMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate province-based heightmap threshold map.
+	err = generateProvinceBasedHeightmapThresholdMap()
 	if err != nil {
 		panic(err)
 	}
@@ -1062,10 +1069,8 @@ func generateProvinceBasedTerrainMap() error {
 				}
 			}
 
-			r, g, b, a := terrainColor.RGBA()
-
 			for _, pc := range p.PixelCoords {
-				img.Set(pc.X, pc.Y, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
+				img.Set(pc.X, pc.Y, color.RGBA{terrainColor.R, terrainColor.G, terrainColor.B, terrainColor.A})
 			}
 		}
 	}
@@ -1080,6 +1085,63 @@ func generateProvinceBasedTerrainMap() error {
 		return err
 	}
 	fmt.Println("Saved 'province_based_terrain.png'")
+
+	return nil
+}
+
+func generateProvinceBasedHeightmapThresholdMap() error {
+	fmt.Println("Generating province-based heightmap threshold map...")
+
+	heightmapFile, err := os.Open(filepath.FromSlash(heightmapPath))
+	if err != nil {
+		return err
+	}
+	defer heightmapFile.Close()
+	heightmapImage, err := bmp.Decode(heightmapFile)
+	if err != nil {
+		return err
+	}
+
+	img := image.NewRGBA(provincesImageSize)
+
+	for _, p := range provincesIDMap {
+		heightmapColors := make(map[color.RGBA]int)
+		if p.Type == "land" {
+			for _, pc := range p.PixelCoords {
+				heightmapColors[heightmapImage.At(pc.X, pc.Y).(color.RGBA)]++
+			}
+
+			max := 0
+			var heightmapColor color.RGBA
+			for c, i := range heightmapColors {
+				if i > max {
+					max = i
+					heightmapColor = c
+				}
+			}
+
+			if heightmapColor.R > 222 {
+				for _, pc := range p.PixelCoords {
+					img.Set(pc.X, pc.Y, color.RGBA{255, 0, 255, 255})
+				}
+			} else {
+				for _, pc := range p.PixelCoords {
+					img.Set(pc.X, pc.Y, color.RGBA{heightmapColor.R, heightmapColor.G, heightmapColor.B, heightmapColor.A})
+				}
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./province_based_heightmap_threshold.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'province_based_heightmap_threshold.png'")
 
 	return nil
 }
