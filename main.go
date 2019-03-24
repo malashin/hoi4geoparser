@@ -1111,6 +1111,7 @@ func generateProvinceBasedHeightmapThresholdMap() error {
 				heightmapColors[heightmapImage.At(pc.X, pc.Y).(color.RGBA)]++
 			}
 
+			// Find dominant color in the province.
 			max := 0
 			var heightmapColor color.RGBA
 			for c, i := range heightmapColors {
@@ -1120,6 +1121,7 @@ func generateProvinceBasedHeightmapThresholdMap() error {
 				}
 			}
 
+			// Color every province higher then that value pink.
 			if heightmapColor.R > 222 {
 				for _, pc := range p.PixelCoords {
 					img.Set(pc.X, pc.Y, color.RGBA{255, 0, 255, 255})
@@ -1127,6 +1129,23 @@ func generateProvinceBasedHeightmapThresholdMap() error {
 			} else {
 				for _, pc := range p.PixelCoords {
 					img.Set(pc.X, pc.Y, color.RGBA{heightmapColor.R, heightmapColor.G, heightmapColor.B, heightmapColor.A})
+				}
+			}
+
+			var dark uint8 = 255
+			var bright uint8
+			// Find the bightest and darkest colors.
+			for c := range heightmapColors {
+				if c.R > bright {
+					bright = c.R
+				}
+				if c.R < dark {
+					dark = c.R
+				}
+			}
+			if bright-dark > 100 {
+				for _, pc := range p.PixelCoords {
+					img.Set(pc.X, pc.Y, color.RGBA{255, 255, 0, 255})
 				}
 			}
 		}
