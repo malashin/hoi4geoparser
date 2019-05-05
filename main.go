@@ -40,10 +40,46 @@ var rStateID = regexp.MustCompile(`(?s:.*id.*?=.*?(\d+).*)`)
 var rStateName = regexp.MustCompile(`(?s:.*name.*?=.*?\"(.+?)\".*)`)
 var rStateManpower = regexp.MustCompile(`(?s:.*manpower.*?=.*?(\d+).*)`)
 var rStateProvinces = regexp.MustCompile(`(?s:.*provinces.*?=.*?{.*?([0-9 ]+).*?}.*)`)
+var rStateInfrastructure = regexp.MustCompile(`(?s:.*infrastructure.*?=.*?(\d+).*)`)
 var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
 var waterColor = color.RGBA{68, 107, 163, 255}
+var charWidth = 4
+var charHeight = 5
+
+// Province represents an in-game province with all parsed data in it.
+type Province struct {
+	ID           int
+	RGB          color.RGBA
+	Type         string // "land", "sea" or "lake"
+	IsCoastal    bool
+	Terrain      string
+	Continent    int
+	PixelCoords  map[image.Point]image.Point
+	CenterPoint  image.Point
+	AdjacentTo   map[int]*Province
+	ConnectedTo  map[int]*Province
+	ImpassableTo map[int]*Province
+}
+
+// State represents an in-game state with all parsed data in it.
+type State struct {
+	ID             int
+	Name           string
+	Manpower       int
+	Infrastructure int
+	IsCoastal      bool
+	Continent      int
+	PixelCoords    map[image.Point]image.Point
+	CenterPoint    image.Point
+	Provinces      map[int]*Province
+	DistanceTo     map[int]int // Distance to other states.
+	AdjacentTo     map[int]*State
+	ConnectedTo    map[int]*State
+	ImpassableTo   map[int]*State
+	RenderColor    color.RGBA
+}
 
 func main() {
 	// Track start time for benchmarking.
@@ -88,11 +124,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// // Generate state ID map.
-	// err = generateSateIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate state ID map.
+	err = generateSateIDMap()
+	if err != nil {
+		panic(err)
+	}
 
 	// // Generate province map.
 	// err = generateProvinceMap()
@@ -100,11 +136,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate province ID map.
-	err = generateProvinceIDMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate province ID map.
+	// err = generateProvinceIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate manpower map.
 	// err = generateManpowerMap()
@@ -130,41 +166,15 @@ func main() {
 	// 	panic(err)
 	// }
 
+	// // Generate infrastructure map.
+	// err = generateInfrastructureMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
-}
-
-// Province represents an in-game province with all parsed data in it.
-type Province struct {
-	ID           int
-	RGB          color.RGBA
-	Type         string // "land", "sea" or "lake"
-	IsCoastal    bool
-	Terrain      string
-	Continent    int
-	PixelCoords  map[image.Point]image.Point
-	CenterPoint  image.Point
-	AdjacentTo   map[int]*Province
-	ConnectedTo  map[int]*Province
-	ImpassableTo map[int]*Province
-}
-
-// State represents an in-game state with all parsed data in it.
-type State struct {
-	ID           int
-	Name         string
-	Manpower     int
-	IsCoastal    bool
-	Continent    int
-	PixelCoords  map[image.Point]image.Point
-	CenterPoint  image.Point
-	Provinces    map[int]*Province
-	DistanceTo   map[int]int // Distance to other states.
-	AdjacentTo   map[int]*State
-	ConnectedTo  map[int]*State
-	ImpassableTo map[int]*State
-	RenderColor  color.RGBA
 }
 
 // ReadLines reads a whole file
@@ -378,15 +388,33 @@ func parseState(path string) (state State, err error) {
 		return state, err
 	}
 	s := strings.Replace(string(b), "\r\n", "\n", -1)
+
 	state.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
 	if err != nil {
 		return state, err
 	}
-	state.Name = rStateName.FindStringSubmatch(s)[1]
-	state.Manpower, err = strconv.Atoi(rStateManpower.FindStringSubmatch(s)[1])
-	if err != nil {
-		return state, err
+
+	r := rStateName.FindStringSubmatch(s)
+	if r != nil {
+		state.Name = r[1]
 	}
+
+	r = rStateManpower.FindStringSubmatch(s)
+	if r != nil {
+		state.Manpower, err = strconv.Atoi(r[1])
+		if err != nil {
+			return state, err
+		}
+	}
+
+	r = rStateInfrastructure.FindStringSubmatch(s)
+	if r != nil {
+		state.Infrastructure, err = strconv.Atoi(r[1])
+		if err != nil {
+			return state, err
+		}
+	}
+
 	state.Provinces = make(map[int]*Province)
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
 	for _, p := range provinces {
@@ -630,7 +658,7 @@ func generateRandomStateColor(s *State, i int) {
 }
 
 func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, label string) error {
-	pt := freetype.Pt(x, y+int(c.PointToFixed(size)>>6))
+	pt := freetype.Pt(x, y)
 	if _, err := c.DrawString(label, pt); err != nil {
 		return err
 	}
@@ -685,7 +713,12 @@ func generateSateIDMap() error {
 
 	//Draw state IDs.
 	for _, s := range statesMap {
-		err := addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, strconv.FormatInt(int64(s.ID), 10))
+		n := strconv.FormatInt(int64(s.ID), 10)
+		offset := 0
+		if n != "" {
+			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+		}
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -883,7 +916,12 @@ func generateProvinceIDMap() error {
 
 	//Draw province IDs.
 	for _, p := range provincesIDMap {
-		err := addLabel(img, c, p.CenterPoint.X*4-7, p.CenterPoint.Y*4-7, 10.0, strconv.FormatInt(int64(p.ID), 10))
+		n := strconv.FormatInt(int64(p.ID), 10)
+		offset := 0
+		if n != "" {
+			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+		}
+		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -977,7 +1015,12 @@ func generateManpowerMap() error {
 
 	//Draw state manpower values.
 	for _, s := range statesMap {
-		err := addLabel(img, c, s.CenterPoint.X-7, s.CenterPoint.Y-7, 10.0, intToString(s.Manpower))
+		n := intToString(s.Manpower)
+		offset := 0
+		if n != "" {
+			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+		}
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -1176,6 +1219,100 @@ func generateProvinceBasedHeightmapThresholdMap() error {
 		return err
 	}
 	fmt.Println("Saved 'province_based_heightmap_threshold.png'")
+
+	return nil
+}
+
+func generateInfrastructureMap() error {
+	fmt.Println("Generating infrastructure map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Find highest infrastructure value.
+	iMax := 0
+	for _, s := range statesMap {
+		if s.Infrastructure > iMax {
+			iMax = s.Infrastructure
+		}
+	}
+
+	// Draw state shapes.
+	colorLow := color.RGBA{255, 64, 64, 255}
+	colorMid := color.RGBA{255, 255, 64, 255}
+	colorHigh := color.RGBA{64, 255, 64, 255}
+	gradient := []color.RGBA{colorLow, colorMid, colorHigh}
+
+	for _, s := range statesMap {
+		i := 100 / float64(iMax) * float64(s.Infrastructure) / 100
+		fillCol := colorFromGradient(i, gradient)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Draw lake province shapes over the land.
+	for _, prov := range provincesIDMap {
+		if prov.Type == "lake" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, waterColor)
+			}
+		}
+	}
+
+	// Draw state borders.
+	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
+	}
+
+	// Init font.
+	c, err := initFont(img)
+	if err != nil {
+		return err
+	}
+
+	//Draw state infrastructure values.
+	for _, s := range statesMap {
+		n := strconv.Itoa(s.Infrastructure)
+		offset := 0
+		if n != "" {
+			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+		}
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./infrastructure_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'infrastructure_map.png'")
 
 	return nil
 }
