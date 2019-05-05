@@ -24,9 +24,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -100,11 +100,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// // Generate province ID map.
-	// err = generateProvinceIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate province ID map.
+	err = generateProvinceIDMap()
+	if err != nil {
+		panic(err)
+	}
 
 	// // Generate manpower map.
 	// err = generateManpowerMap()
@@ -124,11 +124,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate province-based heightmap threshold map.
-	err = generateProvinceBasedHeightmapThresholdMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate province-based heightmap threshold map.
+	// err = generateProvinceBasedHeightmapThresholdMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -139,7 +139,7 @@ func main() {
 type Province struct {
 	ID           int
 	RGB          color.RGBA
-	Type         string // "land" or "sea"
+	Type         string // "land", "sea" or "lake"
 	IsCoastal    bool
 	Terrain      string
 	Continent    int
@@ -644,11 +644,13 @@ func generateSateIDMap() error {
 	img := image.NewRGBA(provincesImageSize)
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
-	// Draw state shapes.
-	for _, s := range statesMap {
-		generateRandomStateColor(s, 0)
-		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, s.RenderColor)
+	// Draw land province shapes.
+	fillCol := color.RGBA{255, 255, 255, 255}
+	for _, prov := range provincesIDMap {
+		if prov.Type == "land" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
 		}
 	}
 
@@ -733,11 +735,13 @@ func generateProvinceMap() error {
 	img := image.NewRGBA(provincesImageSize)
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
-	// Draw state shapes.
+	// Draw land province shapes.
 	fillCol := color.RGBA{255, 255, 255, 255}
-	for _, s := range statesMap {
-		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, fillCol)
+	for _, prov := range provincesIDMap {
+		if prov.Type == "land" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
 		}
 	}
 
@@ -800,11 +804,13 @@ func generateProvinceIDMap() error {
 	img := image.NewRGBA(provincesImageSize)
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
-	// Draw state shapes.
+	// Draw land province shapes.
 	fillCol := color.RGBA{255, 255, 255, 255}
-	for _, s := range statesMap {
-		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, fillCol)
+	for _, prov := range provincesIDMap {
+		if prov.Type == "land" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
 		}
 	}
 
@@ -928,6 +934,15 @@ func generateManpowerMap() error {
 		fillCol := colorFromGradient(mp, gradient)
 		for _, p := range s.PixelCoords {
 			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Draw lake province shapes over the land.
+	for _, prov := range provincesIDMap {
+		if prov.Type == "lake" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, waterColor)
+			}
 		}
 	}
 
