@@ -12,4 +12,5 @@
 *.out
 
 hoi4geoparser_data.txt
+small_provinces_list.txt
 *.png

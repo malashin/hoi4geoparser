@@ -24,9 +24,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -56,6 +56,7 @@ type Province struct {
 	IsCoastal    bool
 	Terrain      string
 	Continent    int
+	State        *State
 	PixelCoords  map[image.Point]image.Point
 	CenterPoint  image.Point
 	AdjacentTo   map[int]*Province
@@ -124,11 +125,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate state ID map.
-	err = generateSateIDMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate state ID map.
+	// err = generateSateIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate province map.
 	// err = generateProvinceMap()
@@ -171,6 +172,12 @@ func main() {
 	// if err != nil {
 	// 	panic(err)
 	// }
+
+	// Generate infrastructure map.
+	err = generateSmallProvincesMap(32)
+	if err != nil {
+		panic(err)
+	}
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -470,6 +477,9 @@ func parseStatesProvinces() {
 					}
 				}
 			}
+
+			// Add state to the province.
+			p1.State = s1
 		}
 	}
 
@@ -1313,6 +1323,160 @@ func generateInfrastructureMap() error {
 		return err
 	}
 	fmt.Println("Saved 'infrastructure_map.png'")
+
+	return nil
+}
+
+func generateSmallProvincesMap(threshold int) error {
+	fmt.Println("Generating small provinces map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Save small provinces in a list.
+	smallProvinceList := []int{}
+
+	// Draw land province shapes.
+	for _, prov := range provincesIDMap {
+		if prov.Type == "land" && prov.ID > 0 {
+			fillCol := color.RGBA{255, 255, 255, 255}
+			if len(prov.PixelCoords) < threshold {
+				smallProvinceList = append(smallProvinceList, prov.ID)
+				fillCol = generateRandomLightColor()
+			}
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
+		}
+	}
+
+	// Sort the province list.
+	sort.Ints(smallProvinceList)
+
+	// Create text file.
+	f, err := os.OpenFile("small_provinces_list.txt", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Write small provinces into files.
+	s := "ID\tSTATE\tCOORDS\tPX_SIZE\n"
+	if _, err = f.WriteString(s); err != nil {
+		return err
+	}
+	for _, pID := range smallProvinceList {
+		prov := provincesIDMap[pID]
+		s := strconv.Itoa(prov.ID) + "\t" + strconv.Itoa(prov.State.ID) + "\t(" + strconv.Itoa(prov.CenterPoint.X) + "," + strconv.Itoa(prov.CenterPoint.Y) + ")\t" + strconv.Itoa(len(prov.PixelCoords)) + "\n"
+		if _, err = f.WriteString(s); err != nil {
+			return err
+		}
+	}
+
+	fmt.Println("Saved 'small_provinces_list.txt'")
+
+	// Save image as PNG.
+	out, err := os.Create("./small_provinces_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'small_provinces_map.png'")
+
+	// Scale image up.
+	dst := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X*4, img.Bounds().Max.Y*4))
+	draw.NearestNeighbor.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	img = dst
+
+	// Draw province borders.
+	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	for _, prov := range provincesIDMap {
+		for _, p := range prov.PixelCoords {
+			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4+3, p.Y*4, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+1, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+2, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
+			}
+			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+1, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+2, p.Y*4+3, provinceBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
+			}
+		}
+	}
+
+	// Draw state borders.
+	stateBorderColor := color.RGBA{255, 0, 0, 255}
+	for _, s := range statesMap {
+		for _, p := range s.PixelCoords {
+			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4+3, p.Y*4, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+1, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+2, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+1, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+2, p.Y*4+3, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X*4-1, p.Y*4, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+1, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+2, stateBorderColor)
+				img.Set(p.X*4-1, p.Y*4+3, stateBorderColor)
+			}
+			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X*4, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+1, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+2, p.Y*4-1, stateBorderColor)
+				img.Set(p.X*4+3, p.Y*4-1, stateBorderColor)
+			}
+		}
+	}
+
+	// Init font.
+	c, err := initFont(img)
+	if err != nil {
+		return err
+	}
+
+	//Draw province IDs.
+	for _, p := range provincesIDMap {
+		n := strconv.FormatInt(int64(p.ID), 10)
+		offset := 0
+		if n != "" {
+			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+		}
+		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2, 10.0, n)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save image as PNG.
+	out, err = os.Create("./small_provinces_map_x4.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'small_provinces_map_x4.png'")
 
 	return nil
 }
