@@ -24,9 +24,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
 
-// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -62,6 +62,7 @@ type Province struct {
 	AdjacentTo   map[int]*Province
 	ConnectedTo  map[int]*Province
 	ImpassableTo map[int]*Province
+	RenderColor  color.RGBA
 }
 
 // State represents an in-game state with all parsed data in it.
@@ -173,8 +174,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate infrastructure map.
-	err = generateSmallProvincesMap(32)
+	// // Generate infrastructure map.
+	// err = generateSmallProvincesMap(32)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate color shuffled province map.
+	err = generateColorShuffledProvinceMap()
 	if err != nil {
 		panic(err)
 	}
@@ -644,8 +651,8 @@ func generateRandomLightColor() color.RGBA {
 
 func isColorClose(a color.RGBA, b color.RGBA) bool {
 	d := math.Sqrt(2*math.Exp2(float64(b.R-a.R)) + 4*math.Exp2(float64(b.G-a.G)) + 3*math.Exp2(float64(b.B-a.B)))
-	// fmt.Printf("%v %v  |  %e  %f  %v\n", a, b, d, d, d < 1000000000000000000000000000000000000)
-	return d < 1000000000000000000000000000000000000
+	// fmt.Printf("%v %v  |  %e  %f  %v\n", a, b, d, d, d < 10000000000000000000000000000000000)
+	return d < 10000000000000000000000000000000000
 }
 
 func generateRandomStateColor(s *State, i int) {
@@ -1479,4 +1486,108 @@ func generateSmallProvincesMap(threshold int) error {
 	fmt.Println("Saved 'small_provinces_map_x4.png'")
 
 	return nil
+}
+
+func generateColorShuffledProvinceMap() error {
+	fmt.Println("Generating color shuffled province map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	newProvincesRGBMap := make(map[color.Color]*Province)
+
+	// Draw land province shapes.
+	for _, prov := range provincesIDMap {
+		fillCol := generateRandomProvinceColor(prov)
+		isColorUnique := false
+		for !isColorUnique {
+			_, ok := newProvincesRGBMap[fillCol]
+			if ok {
+				fillCol = generateRandomProvinceColor(prov)
+			} else {
+				closeAdjacentColor := true
+				i := 0
+				for closeAdjacentColor && (i < 256) {
+					closeAdjacentColor = false
+					for _, a := range prov.AdjacentTo {
+						if (a.RenderColor != color.RGBA{0, 0, 0, 0}) && (isColorClose(fillCol, a.RenderColor)) {
+							closeAdjacentColor = true
+							i++
+							continue
+						}
+					}
+				}
+
+				prov.RenderColor = fillCol
+				newProvincesRGBMap[fillCol] = prov
+				isColorUnique = true
+			}
+		}
+		for _, p := range prov.PixelCoords {
+			img.Set(p.X, p.Y, fillCol)
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./color_shuffled_province_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'color_shuffled_province_map.png'")
+
+	// Write new definition.csv.
+	var IDs []int
+	for id := range provincesIDMap {
+		IDs = append(IDs, id)
+	}
+	sort.Ints(IDs)
+
+	f, err := os.OpenFile("definition.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	for _, id := range IDs {
+		p := provincesIDMap[id]
+		s := fmt.Sprintf("%v;%v;%v;%v;%v;%v;%v;%v\n", p.ID, p.RenderColor.R, p.RenderColor.G, p.RenderColor.B, p.Type, p.IsCoastal, p.Terrain, p.Continent)
+		if _, err = f.WriteString(s); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func generateRandomProvinceColor(prov *Province) color.RGBA {
+	fillCol := generateRandomLandColor()
+	if prov.Type != "land" {
+		fillCol = generateRandomSeaColor()
+	}
+	return fillCol
+}
+
+func generateRandomLandColor() color.RGBA {
+	maxR := 255
+	minR := 33
+	maxG := 255
+	minG := 33
+	maxB := 255
+	minB := 0
+	return color.RGBA{uint8(rand.Intn(maxR-minR) + minR), uint8(rand.Intn(maxG-minG) + minG), uint8(rand.Intn(maxB-minB) + minB), 255}
+}
+
+func generateRandomSeaColor() color.RGBA {
+	maxR := 16
+	minR := 0
+	maxG := 16
+	minG := 0
+	maxB := 192
+	minB := 16
+	return color.RGBA{uint8(rand.Intn(maxR-minR) + minR), uint8(rand.Intn(maxG-minG) + minG), uint8(rand.Intn(maxB-minB) + minB), 255}
 }
