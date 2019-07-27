@@ -186,17 +186,17 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// // Generate color shuffled province map.
-	// err = generateColorShuffledProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// Generate state ID map.
-	err = generateProvinceContinentValues("continents.png")
+	// Generate color shuffled province map.
+	err = generateColorShuffledProvinceMap()
 	if err != nil {
 		panic(err)
 	}
+
+	// // Generate state ID map.
+	// err = generateProvinceContinentValues("continents.png")
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -1548,6 +1548,11 @@ func generateColorShuffledProvinceMap() error {
 
 	// Draw land province shapes.
 	for _, prov := range provincesIDMap {
+		if prov.ID == 0 {
+			newProvincesRGBMap[color.RGBA{0, 0, 0, 0}] = prov
+			continue
+		}
+
 		fillCol := generateRandomProvinceColor(prov)
 		isColorUnique := false
 		for !isColorUnique {
