@@ -24,9 +24,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
+var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -127,6 +127,12 @@ func main() {
 	// }
 
 	// // Generate state ID map.
+	// err = generateSateMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// // Generate state ID map.
 	// err = generateSateIDMap()
 	// if err != nil {
 	// 	panic(err)
@@ -180,8 +186,14 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate color shuffled province map.
-	err = generateColorShuffledProvinceMap()
+	// // Generate color shuffled province map.
+	// err = generateColorShuffledProvinceMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// Generate state ID map.
+	err = generateProvinceContinentValues("continents.png")
 	if err != nil {
 		panic(err)
 	}
@@ -679,6 +691,43 @@ func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, labe
 	if _, err := c.DrawString(label, pt); err != nil {
 		return err
 	}
+	return nil
+}
+
+func generateSateMap() error {
+	fmt.Println("Generating state map...")
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	for _, s := range statesMap {
+		generateRandomStateColor(s, 0)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, s.RenderColor)
+		}
+	}
+
+	// Draw lake province shapes over the land.
+	for _, prov := range provincesIDMap {
+		if prov.Type == "lake" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, waterColor)
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./state_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Saved 'state_map.png'")
 	return nil
 }
 
@@ -1555,11 +1604,12 @@ func generateColorShuffledProvinceMap() error {
 
 	for _, id := range IDs {
 		p := provincesIDMap[id]
-		s := fmt.Sprintf("%v;%v;%v;%v;%v;%v;%v;%v\n", p.ID, p.RenderColor.R, p.RenderColor.G, p.RenderColor.B, p.Type, p.IsCoastal, p.Terrain, p.Continent)
+		s := fmt.Sprintf("%v;%v;%v;%v;%v;%v;%v;%v\r\n", p.ID, p.RenderColor.R, p.RenderColor.G, p.RenderColor.B, p.Type, p.IsCoastal, p.Terrain, p.Continent)
 		if _, err = f.WriteString(s); err != nil {
 			return err
 		}
 	}
+	fmt.Println("Saved 'definition.csv'")
 
 	return nil
 }
@@ -1590,4 +1640,79 @@ func generateRandomSeaColor() color.RGBA {
 	maxB := 192
 	minB := 16
 	return color.RGBA{uint8(rand.Intn(maxR-minR) + minR), uint8(rand.Intn(maxG-minG) + minG), uint8(rand.Intn(maxB-minB) + minB), 255}
+}
+
+func generateProvinceContinentValues(continentsPath string) error {
+	fmt.Println("Generating new province continent values...")
+
+	c1 := color.RGBA{75, 43, 7, 255}     // brown: west_coast
+	c2 := color.RGBA{255, 255, 255, 255} // white: northern_reaches
+	c3 := color.RGBA{11, 103, 0, 255}    // green: land_of_titans
+	c4 := color.RGBA{222, 221, 39, 255}  // yellow: midwest
+	c5 := color.RGBA{169, 45, 45, 255}   // red: east_coast
+	c6 := color.RGBA{0, 210, 235, 255}   // cyan: caribbean_expanse
+
+	continentsFile, err := os.Open(filepath.FromSlash(continentsPath))
+	if err != nil {
+		return err
+	}
+	defer continentsFile.Close()
+	continentsImage, _, err := image.Decode(continentsFile)
+	if err != nil {
+		return err
+	}
+
+	// Write new definition.csv.
+	var IDs []int
+	for id := range provincesIDMap {
+		IDs = append(IDs, id)
+	}
+	sort.Ints(IDs)
+
+	f, err := os.OpenFile("definition.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	for _, id := range IDs {
+		p := provincesIDMap[id]
+		continent := p.Continent
+
+		var col1 color.RGBA
+		for px := range p.PixelCoords {
+			col2 := continentsImage.At(px.X, px.Y)
+			r1, g1, b1, a1 := col1.RGBA()
+			r2, g2, b2, a2 := col2.RGBA()
+
+			if a1 != 0 && r1 != r2 && g1 != g2 && b1 != b2 && a1 != a2 {
+				return fmt.Errorf("Different continent colors in province %v at %v", p.ID, px)
+			}
+
+			col1 = col2.(color.RGBA)
+
+			switch fmt.Sprintf("%v", col2) {
+			case fmt.Sprintf("%v", c1):
+				continent = 1
+			case fmt.Sprintf("%v", c2):
+				continent = 2
+			case fmt.Sprintf("%v", c3):
+				continent = 3
+			case fmt.Sprintf("%v", c4):
+				continent = 4
+			case fmt.Sprintf("%v", c5):
+				continent = 5
+			case fmt.Sprintf("%v", c6):
+				continent = 6
+			}
+		}
+
+		s := fmt.Sprintf("%v;%v;%v;%v;%v;%v;%v;%v\r\n", p.ID, p.RGB.R, p.RGB.G, p.RGB.B, p.Type, p.IsCoastal, p.Terrain, continent)
+		if _, err = f.WriteString(s); err != nil {
+			return err
+		}
+	}
+	fmt.Println("Saved 'definition.csv'")
+
+	return nil
 }
