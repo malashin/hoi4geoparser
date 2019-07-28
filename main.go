@@ -24,45 +24,50 @@ import (
 	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
 var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
+var strategicRegionPath = modPath + "/map/strategicregions"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
-var rStateID = regexp.MustCompile(`(?s:.*id.*?=.*?(\d+).*)`)
-var rStateName = regexp.MustCompile(`(?s:.*name.*?=.*?\"(.+?)\".*)`)
-var rStateManpower = regexp.MustCompile(`(?s:.*manpower.*?=.*?(\d+).*)`)
-var rStateProvinces = regexp.MustCompile(`(?s:.*provinces.*?=.*?{.*?([0-9 ]+).*?}.*)`)
-var rStateInfrastructure = regexp.MustCompile(`(?s:.*infrastructure.*?=.*?(\d+).*)`)
+var strategicRegionMap = make(map[int]*StrategicRegion)
+var rStateID = regexp.MustCompile(`(?:id[ \n\t]*?=[ \n\t]*?(\d+))`)
+var rStateName = regexp.MustCompile(`(?:name[ \n\t]*?=[ \n\t]*?\"(.+?)\")`)
+var rStateManpower = regexp.MustCompile(`(?:manpower[ \n\t]*?=[ \n\t]*?(\d+))`)
+var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 ]+).*?})`)
+var rStateInfrastructure = regexp.MustCompile(`(?:infrastructure[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
 var waterColor = color.RGBA{68, 107, 163, 255}
 var charWidth = 4
 var charHeight = 5
+var startTime time.Time
 
 // Province represents an in-game province with all parsed data in it.
 type Province struct {
-	ID           int
-	RGB          color.RGBA
-	Type         string // "land", "sea" or "lake"
-	IsCoastal    bool
-	Terrain      string
-	Continent    int
-	State        *State
-	PixelCoords  map[image.Point]image.Point
-	CenterPoint  image.Point
-	AdjacentTo   map[int]*Province
-	ConnectedTo  map[int]*Province
-	ImpassableTo map[int]*Province
-	RenderColor  color.RGBA
+	ID              int
+	RGB             color.RGBA
+	Type            string // "land", "sea" or "lake"
+	IsCoastal       bool
+	Terrain         string
+	Continent       int
+	State           *State
+	StrategicRegion *StrategicRegion
+	PixelCoords     []image.Point
+	PixelCoordsMap  map[image.Point]bool
+	CenterPoint     image.Point
+	AdjacentTo      map[int]*Province
+	ConnectedTo     map[int]*Province
+	ImpassableTo    map[int]*Province
+	RenderColor     color.RGBA
 }
 
 // State represents an in-game state with all parsed data in it.
@@ -73,7 +78,8 @@ type State struct {
 	Infrastructure int
 	IsCoastal      bool
 	Continent      int
-	PixelCoords    map[image.Point]image.Point
+	PixelCoords    []image.Point
+	PixelCoordsMap map[image.Point]bool
 	CenterPoint    image.Point
 	Provinces      map[int]*Province
 	DistanceTo     map[int]int // Distance to other states.
@@ -83,9 +89,19 @@ type State struct {
 	RenderColor    color.RGBA
 }
 
+// StrategicRegion represents an in-game strategic_region with all parsed data in it.
+type StrategicRegion struct {
+	ID             int
+	Name           string
+	Provinces      map[int]*Province
+	PixelCoords    []image.Point
+	PixelCoordsMap map[image.Point]bool
+	CenterPoint    image.Point
+}
+
 func main() {
 	// Track start time for benchmarking.
-	startTime := time.Now()
+	startTime = time.Now()
 
 	// Parse  definition.csv for provinces.
 	err := parseDefinitions()
@@ -120,41 +136,50 @@ func main() {
 	// Parse states distance to other states.
 	parseStatesDistanceToOtherStates()
 
+	// Parse state files.
+	err = parseStrategicRegionFiles()
+	if err != nil {
+		panic(err)
+	}
+
+	// Parse strategic regions provinces.
+	parseStrategicRegionsProvinces()
+
 	// // Write the output file.
 	// err = saveGeoData()
 	// if err != nil {
 	// 	panic(err)
 	// }
 
-	// // Generate state ID map.
-	// err = generateSateMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate state ID map.
+	err = generateSateMap()
+	if err != nil {
+		panic(err)
+	}
 
-	// // Generate state ID map.
-	// err = generateSateIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate state ID map.
+	err = generateSateIDMap()
+	if err != nil {
+		panic(err)
+	}
 
-	// // Generate province map.
-	// err = generateProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate province map.
+	err = generateProvinceMap()
+	if err != nil {
+		panic(err)
+	}
 
-	// // Generate province ID map.
-	// err = generateProvinceIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate province ID map.
+	err = generateProvinceIDMap()
+	if err != nil {
+		panic(err)
+	}
 
-	// // Generate manpower map.
-	// err = generateManpowerMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate manpower map.
+	err = generateManpowerMap()
+	if err != nil {
+		panic(err)
+	}
 
 	// // Generate sea province map.
 	// err = generateSeaProvinceMap()
@@ -174,11 +199,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// // Generate infrastructure map.
-	// err = generateInfrastructureMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Generate infrastructure map.
+	err = generateInfrastructureMap()
+	if err != nil {
+		panic(err)
+	}
 
 	// // Generate infrastructure map.
 	// err = generateSmallProvincesMap(32)
@@ -186,11 +211,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate color shuffled province map.
-	err = generateColorShuffledProvinceMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate color shuffled province map.
+	// err = generateColorShuffledProvinceMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate state ID map.
 	// err = generateProvinceContinentValues("continents.png")
@@ -221,7 +246,7 @@ func readLines(path string) ([]string, error) {
 }
 
 func parseDefinitions() error {
-	fmt.Println("Parsing definition.csv...")
+	fmt.Printf("%s: Parsing definition.csv...\n", time.Since(startTime))
 	definitions, err := readLines(filepath.FromSlash(definitionsPath))
 	if err != nil {
 		return err
@@ -270,7 +295,7 @@ func parseDefinitionsProvince(s string) (p Province, err error) {
 	if err != nil {
 		return p, err
 	}
-	p.PixelCoords = make(map[image.Point]image.Point)
+	p.PixelCoordsMap = make(map[image.Point]bool)
 	p.AdjacentTo = make(map[int]*Province)
 	p.ConnectedTo = make(map[int]*Province)
 	p.ImpassableTo = make(map[int]*Province)
@@ -279,7 +304,7 @@ func parseDefinitionsProvince(s string) (p Province, err error) {
 }
 
 func parseAdjacencies() error {
-	fmt.Println("Parsing adjacencies.csv...")
+	fmt.Printf("%s: Parsing adjacencies.csv...\n", time.Since(startTime))
 	adjacencies, err := readLines(filepath.FromSlash(adjacenciesPath))
 	if err != nil {
 		return err
@@ -328,7 +353,7 @@ func parseAdjacenciesState(s string) error {
 }
 
 func parseProvinces() error {
-	fmt.Println("Parsing provinces.bmp...")
+	fmt.Printf("%s: Parsing provinces.bmp...\n", time.Since(startTime))
 	provincesFile, err := os.Open(filepath.FromSlash(provincesPath))
 	if err != nil {
 		return err
@@ -350,7 +375,8 @@ func parseProvinces() error {
 			c := provincesImage.At(x, y)
 
 			// Add pixel coordinates to the province that has this RGB value.
-			provincesRGBMap[c].PixelCoords[image.Point{x, y}] = image.Point{x, y}
+			provincesRGBMap[c].PixelCoordsMap[image.Point{x, y}] = true
+			provincesRGBMap[c].PixelCoords = append(provincesRGBMap[c].PixelCoords, image.Point{x, y})
 
 			// Find out the color of the adjacent right and bottom pixels.
 			if x < provincesImage.Bounds().Max.X-1 {
@@ -375,25 +401,116 @@ func parseProvinces() error {
 }
 
 func findProvincesCenterPoints() {
-	fmt.Println("Calculating provinces center point coordinates...")
+	fmt.Printf("%s: Calculating provinces center point coordinates...\n", time.Since(startTime))
 	for _, p := range provincesIDMap {
 		p.CenterPoint = findCenterPoint(p.PixelCoords)
 	}
 }
 
-func findCenterPoint(coords map[image.Point]image.Point) image.Point {
-	x := 0
-	y := 0
+func findCenterPoint(coords []image.Point) image.Point {
+	// // Fast centerpoint calculation.
+	// x := 0
+	// y := 0
 
+	// for _, c := range coords {
+	// 	x += c.X
+	// 	y += c.Y
+	// }
+
+	// return image.Point{int(math.Round(float64(x) / float64(len(coords)))), int(math.Round(float64(y) / float64(len(coords))))}
+
+	// Long largest rects centerpoint calculation.
+	l := math.MaxInt64
+	r := math.MinInt64
+	t := math.MaxInt64
+	b := math.MinInt64
 	for _, c := range coords {
-		x += c.X
-		y += c.Y
+		if c.X < l {
+			l = c.X
+		}
+		if c.X > r {
+			r = c.X
+		}
+		if c.Y < t {
+			t = c.Y
+		}
+		if c.Y > b {
+			b = c.Y
+		}
 	}
-	return image.Point{int(math.Round(float64(x) / float64(len(coords)))), int(math.Round(float64(y) / float64(len(coords))))}
+
+	maxRectSize := -1
+	var maxRect image.Rectangle
+	line := make([]int, r-l+1)
+	for y := t; y <= b; y++ {
+		i := 0
+		for x := l; x <= r; x++ {
+			if containsPoint(coords, image.Point{x, y}) {
+				line[i]++
+			} else {
+				line[i] = 0
+			}
+			i++
+		}
+		// fmt.Println(line)
+
+		rectSize, xStart, xEnd, yStart := findLargestRectangle(line)
+		if maxRectSize < rectSize {
+			maxRectSize = rectSize
+			maxRect.Min = image.Point{l + xStart, y - yStart + 1}
+			maxRect.Max = image.Point{l + xEnd - 1, y - 1}
+		}
+	}
+	// fmt.Println("> ", l, t, r, b, maxRectSize, maxRect, image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))})
+
+	return image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))}
+}
+
+func findLargestRectangle(hist []int) (int, int, int, int) {
+	var h, pos, tempH, tempPos int
+	var xStart, xEnd, yStart int
+	var hStack, posStack []int
+	maxSize := -1
+	tempSize := -1
+
+	for pos = 0; pos < len(hist); pos++ {
+		h = hist[pos]
+		if len(hStack) == 0 || h > hStack[len(hStack)-1] {
+			hStack = append(hStack, h)
+			posStack = append(posStack, pos)
+		} else if h < hStack[len(hStack)-1] {
+			for len(hStack) > 0 && h < hStack[len(hStack)-1] {
+				hStack, posStack, tempH, tempPos, tempSize = popStack(hStack, posStack, pos, maxSize)
+				if maxSize < tempSize {
+					maxSize = tempSize
+					xStart = tempPos
+					xEnd = pos
+					yStart = tempH
+				}
+			}
+			hStack = append(hStack, h)
+			posStack = append(posStack, tempPos)
+		}
+	}
+	return maxSize, xStart, xEnd, yStart
+}
+
+func popStack(hStack, posStack []int, pos, maxSize int) ([]int, []int, int, int, int) {
+	tempH, hStack := hStack[len(hStack)-1], hStack[:len(hStack)-1]
+	tempPos, posStack := posStack[len(posStack)-1], posStack[:len(posStack)-1]
+	tempSize := tempH * (pos - tempPos)
+	return hStack, posStack, tempH, tempPos, tempSize
+}
+
+func maxInt(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }
 
 func parseStateFiles() error {
-	fmt.Println("Parsing state files...")
+	fmt.Printf("%s: Parsing state files...\n", time.Since(startTime))
 	stateFiles, err := filepath.Glob(filepath.FromSlash(statesPath) + string(os.PathSeparator) + "*.txt")
 	if err != nil {
 		return err
@@ -451,7 +568,7 @@ func parseState(path string) (state State, err error) {
 		state.Provinces[pID] = provincesIDMap[pID]
 	}
 	state.Continent = -1
-	state.PixelCoords = make(map[image.Point]image.Point)
+	state.PixelCoordsMap = make(map[image.Point]bool)
 	state.DistanceTo = make(map[int]int)
 	state.AdjacentTo = make(map[int]*State)
 	state.ConnectedTo = make(map[int]*State)
@@ -461,7 +578,7 @@ func parseState(path string) (state State, err error) {
 }
 
 func parseStatesProvinces() {
-	fmt.Println("Parsing provinces in each state...")
+	fmt.Printf("%s: Parsing provinces in each state...\n", time.Since(startTime))
 	for _, s1 := range statesMap {
 		for _, p1 := range s1.Provinces {
 			// All provinces in a state should have the same continent number.
@@ -477,7 +594,8 @@ func parseStatesProvinces() {
 
 			// Fill in each states pixel coordinates.
 			for _, pc := range p1.PixelCoords {
-				s1.PixelCoords[pc] = pc
+				s1.PixelCoordsMap[pc] = true
+				s1.PixelCoords = append(s1.PixelCoords, pc)
 			}
 
 			// Fill up adjacentTo and connectedTo fields in all states
@@ -504,6 +622,7 @@ func parseStatesProvinces() {
 
 	for _, s1 := range statesMap {
 		// Find the center point of the state.
+		// fmt.Printf("%s: Calculating states center point coordinates...\n", time.Since(startTime))
 		s1.CenterPoint = findCenterPoint(s1.PixelCoords)
 
 		// If state has provinces with non-empty impassableTo field.
@@ -544,7 +663,7 @@ func parseStatesProvinces() {
 }
 
 func parseStatesDistanceToOtherStates() {
-	fmt.Println("Calculating distance between each state...")
+	fmt.Printf("%s: Calculating distance between each state...\n", time.Since(startTime))
 	for _, s1 := range statesMap {
 		for _, s2 := range statesMap {
 			s1.DistanceTo[s2.ID] = distance(s1.CenterPoint, s2.CenterPoint)
@@ -557,8 +676,75 @@ func distance(c1, c2 image.Point) int {
 	return int(math.Round(math.Sqrt(math.Pow(float64(c2.X-c1.X), 2)+math.Pow(float64(c2.Y-c1.Y), 2)) * mapScalePixelToKm))
 }
 
+func parseStrategicRegionFiles() error {
+	fmt.Printf("%s: Parsing strategic region files...\n", time.Since(startTime))
+	strategicRegionFiles, err := filepath.Glob(filepath.FromSlash(strategicRegionPath) + string(os.PathSeparator) + "*.txt")
+	if err != nil {
+		return err
+	}
+	for _, r := range strategicRegionFiles {
+		strategicRegion, err := parseStrategicRegion(r)
+		if err != nil {
+			return err
+		}
+		strategicRegionMap[strategicRegion.ID] = &strategicRegion
+	}
+	return nil
+}
+
+func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err error) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return strategicRegion, err
+	}
+	s := strings.Replace(string(b), "\r\n", "\n", -1)
+
+	strategicRegion.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
+	if err != nil {
+		return strategicRegion, err
+	}
+
+	r := rStateName.FindStringSubmatch(s)
+	if r != nil {
+		strategicRegion.Name = r[1]
+	}
+
+	strategicRegion.Provinces = make(map[int]*Province)
+	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
+	for _, p := range provinces {
+		pID, err := strconv.Atoi(p)
+		if err != nil {
+			return strategicRegion, err
+		}
+		strategicRegion.Provinces[pID] = provincesIDMap[pID]
+	}
+
+	strategicRegion.PixelCoordsMap = make(map[image.Point]bool)
+
+	return strategicRegion, nil
+}
+
+func parseStrategicRegionsProvinces() {
+	fmt.Printf("%s: Parsing provinces in each strategic region...\n", time.Since(startTime))
+	for _, r := range strategicRegionMap {
+		for _, p := range r.Provinces {
+			// Fill in each strategic regions pixel coordinates.
+			for _, pc := range p.PixelCoords {
+				r.PixelCoordsMap[pc] = true
+				r.PixelCoords = append(r.PixelCoords, pc)
+			}
+
+			// Add strategic region to the province.
+			p.StrategicRegion = r
+		}
+		// // Find the center point of the strategic region.
+		// // fmt.Printf("%s: Calculating strategic regions center point coordinates...\n", time.Since(startTime))
+		// r.CenterPoint = findCenterPoint(r.PixelCoords)
+	}
+}
+
 func saveGeoData() error {
-	fmt.Println("Writing the output file...")
+	fmt.Printf("%s: Writing the output file...\n", time.Since(startTime))
 	// Create new file.
 	f, err := os.Create("hoi4geoparser_data.txt")
 	if err != nil {
@@ -695,17 +881,73 @@ func addLabel(img *image.RGBA, c *freetype.Context, x, y int, size float64, labe
 }
 
 func generateSateMap() error {
-	fmt.Println("Generating state map...")
+	fmt.Printf("%s: Generating state map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
-	// Draw state shapes.
+	// // Draw state shapes.
+	// for _, s := range statesMap {
+	// 	generateRandomStateColor(s, 0)
+	// 	for _, p := range s.PixelCoords {
+	// 		img.Set(p.X, p.Y, s.RenderColor)
+	// 	}
+	// }
+
+	// Draw land province shapes.
+	fillCol := color.RGBA{255, 255, 255, 255}
+	for _, prov := range provincesIDMap {
+		if prov.Type == "land" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, fillCol)
+			}
+		}
+	}
+
+	// Draw state borders.
+	stateBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, s := range statesMap {
-		generateRandomStateColor(s, 0)
 		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, s.RenderColor)
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, stateBorderColor)
+			}
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
+	}
+
+	// Draw strategic region borders.
+	strategicRegionBorderColor := color.RGBA{158, 158, 158, 255}
+	for _, r := range strategicRegionMap {
+		for _, p := range r.PixelCoords {
+			_, exists := r.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
+			}
 		}
 	}
 
@@ -727,12 +969,12 @@ func generateSateMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'state_map.png'")
+	fmt.Printf("%s: Saved 'state_map.png'\n", time.Since(startTime))
 	return nil
 }
 
 func generateSateIDMap() error {
-	fmt.Println("Generating state ID map...")
+	fmt.Printf("%s: Generating state ID map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -749,24 +991,47 @@ func generateSateIDMap() error {
 	}
 
 	// Draw state borders.
-	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	stateBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X+1, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
+	}
+
+	// Draw strategic region borders.
+	strategicRegionBorderColor := color.RGBA{158, 158, 158, 255}
+	for _, r := range strategicRegionMap {
+		for _, p := range r.PixelCoords {
+			_, exists := r.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
 			}
 		}
 	}
@@ -782,9 +1047,9 @@ func generateSateIDMap() error {
 		n := strconv.FormatInt(int64(s.ID), 10)
 		offset := 0
 		if n != "" {
-			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+			offset = (len(n)*charWidth - strings.Count(n, "1") + len(n) - 1) / 2
 		}
-		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2+1, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -799,7 +1064,7 @@ func generateSateIDMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'state_map_with_ids.png'")
+	fmt.Printf("%s: Saved 'state_map_with_ids.png'\n", time.Since(startTime))
 	return nil
 }
 
@@ -828,7 +1093,7 @@ func initFont(img *image.RGBA) (*freetype.Context, error) {
 }
 
 func generateProvinceMap() error {
-	fmt.Println("Generating province map...")
+	fmt.Printf("%s: Generating province map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -845,14 +1110,14 @@ func generateProvinceMap() error {
 	}
 
 	// Draw province borders.
-	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	provinceBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, prov := range provincesIDMap {
 		for _, p := range prov.PixelCoords {
-			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := prov.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X+1, p.Y, provinceBorderColor)
 			}
-			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = prov.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, provinceBorderColor)
 			}
@@ -863,21 +1128,44 @@ func generateProvinceMap() error {
 	stateBorderColor := color.RGBA{255, 0, 0, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X+1, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
+			}
+		}
+	}
+
+	// Draw strategic region borders.
+	strategicRegionBorderColor := color.RGBA{255, 0, 0, 255}
+	for _, r := range strategicRegionMap {
+		for _, p := range r.PixelCoords {
+			_, exists := r.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+			if !exists {
+				img.Set(p.X+1, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+			if !exists {
+				img.Set(p.X, p.Y+1, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
+			}
+			_, exists = r.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+			if !exists {
+				img.Set(p.X, p.Y, strategicRegionBorderColor)
 			}
 		}
 	}
@@ -891,13 +1179,13 @@ func generateProvinceMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'province_map.png'")
+	fmt.Printf("%s: Saved 'province_map.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateProvinceIDMap() error {
-	fmt.Println("Generating province ID map...")
+	fmt.Printf("%s: Generating province ID map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -919,17 +1207,17 @@ func generateProvinceIDMap() error {
 	img = dst
 
 	// Draw province borders.
-	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	provinceBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, prov := range provincesIDMap {
 		for _, p := range prov.PixelCoords {
-			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := prov.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4+3, p.Y*4, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+1, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+2, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
 			}
-			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = prov.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4+3, provinceBorderColor)
 				img.Set(p.X*4+1, p.Y*4+3, provinceBorderColor)
@@ -943,28 +1231,28 @@ func generateProvinceIDMap() error {
 	stateBorderColor := color.RGBA{255, 0, 0, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4+3, p.Y*4, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+1, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+2, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+1, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+2, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4-1, p.Y*4, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+1, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+2, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4-1, stateBorderColor)
 				img.Set(p.X*4+1, p.Y*4-1, stateBorderColor)
@@ -985,9 +1273,9 @@ func generateProvinceIDMap() error {
 		n := strconv.FormatInt(int64(p.ID), 10)
 		offset := 0
 		if n != "" {
-			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+			offset = (len(n)*charWidth - strings.Count(n, "1") + len(n) - 1) / 2
 		}
-		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2, 10.0, n)
+		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2+1, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -1002,13 +1290,13 @@ func generateProvinceIDMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'province_id_map.png'")
+	fmt.Printf("%s: Saved 'province_id_map.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateManpowerMap() error {
-	fmt.Println("Generating manpower map...")
+	fmt.Printf("%s: Generating manpower map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -1051,22 +1339,22 @@ func generateManpowerMap() error {
 	}
 
 	// Draw state borders.
-	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	stateBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X+1, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
@@ -1084,9 +1372,9 @@ func generateManpowerMap() error {
 		n := intToString(s.Manpower)
 		offset := 0
 		if n != "" {
-			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+			offset = (len(n)*charWidth - strings.Count(n, "1") + len(n) - 1) / 2
 		}
-		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2+1, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -1101,7 +1389,7 @@ func generateManpowerMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'manpower_map.png'")
+	fmt.Printf("%s: Saved 'manpower_map.png'\n", time.Since(startTime))
 
 	return nil
 }
@@ -1131,7 +1419,7 @@ func intToString(n int) string {
 }
 
 func generateSeaProvinceMap() error {
-	fmt.Println("Generating sea province map...")
+	fmt.Printf("%s: Generating sea province map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -1156,13 +1444,13 @@ func generateSeaProvinceMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'sea_province_map.png'")
+	fmt.Printf("%s: Saved 'sea_province_map.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateProvinceBasedTerrainMap() error {
-	fmt.Println("Generating province-based terrain map...")
+	fmt.Printf("%s: Generating province-based terrain map...\n", time.Since(startTime))
 
 	terrainFile, err := os.Open(filepath.FromSlash(terrainPath))
 	if err != nil {
@@ -1208,13 +1496,13 @@ func generateProvinceBasedTerrainMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'province_based_terrain.png'")
+	fmt.Printf("%s: Saved 'province_based_terrain.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateProvinceBasedHeightmapThresholdMap() error {
-	fmt.Println("Generating province-based heightmap threshold map...")
+	fmt.Printf("%s: Generating province-based heightmap threshold map...\n", time.Since(startTime))
 
 	heightmapFile, err := os.Open(filepath.FromSlash(heightmapPath))
 	if err != nil {
@@ -1284,13 +1572,13 @@ func generateProvinceBasedHeightmapThresholdMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'province_based_heightmap_threshold.png'")
+	fmt.Printf("%s: Saved 'province_based_heightmap_threshold.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateInfrastructureMap() error {
-	fmt.Println("Generating infrastructure map...")
+	fmt.Printf("%s: Generating infrastructure map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -1328,22 +1616,22 @@ func generateInfrastructureMap() error {
 	}
 
 	// Draw state borders.
-	stateBorderColor := color.RGBA{128, 128, 128, 255}
+	stateBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X+1, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X, p.Y+1, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X, p.Y, stateBorderColor)
 			}
@@ -1361,9 +1649,9 @@ func generateInfrastructureMap() error {
 		n := strconv.Itoa(s.Infrastructure)
 		offset := 0
 		if n != "" {
-			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+			offset = (len(n)*charWidth - strings.Count(n, "1") + len(n) - 1) / 2
 		}
-		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2, 10.0, n)
+		err := addLabel(img, c, s.CenterPoint.X-offset, s.CenterPoint.Y+charHeight/2+1, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -1378,13 +1666,13 @@ func generateInfrastructureMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'infrastructure_map.png'")
+	fmt.Printf("%s: Saved 'infrastructure_map.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateSmallProvincesMap(threshold int) error {
-	fmt.Println("Generating small provinces map...")
+	fmt.Printf("%s: Generating small provinces map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -1429,8 +1717,7 @@ func generateSmallProvincesMap(threshold int) error {
 			return err
 		}
 	}
-
-	fmt.Println("Saved 'small_provinces_list.txt'")
+	fmt.Printf("%s: Saved 'small_provinces_list.txt'\n", time.Since(startTime))
 
 	// Save image as PNG.
 	out, err := os.Create("./small_provinces_map.png")
@@ -1441,7 +1728,7 @@ func generateSmallProvincesMap(threshold int) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'small_provinces_map.png'")
+	fmt.Printf("%s: Saved 'small_provinces_map.png'\n", time.Since(startTime))
 
 	// Scale image up.
 	dst := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X*4, img.Bounds().Max.Y*4))
@@ -1449,17 +1736,17 @@ func generateSmallProvincesMap(threshold int) error {
 	img = dst
 
 	// Draw province borders.
-	provinceBorderColor := color.RGBA{128, 128, 128, 255}
+	provinceBorderColor := color.RGBA{158, 158, 158, 255}
 	for _, prov := range provincesIDMap {
 		for _, p := range prov.PixelCoords {
-			_, exists := prov.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := prov.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4+3, p.Y*4, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+1, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+2, provinceBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, provinceBorderColor)
 			}
-			_, exists = prov.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = prov.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4+3, provinceBorderColor)
 				img.Set(p.X*4+1, p.Y*4+3, provinceBorderColor)
@@ -1473,28 +1760,28 @@ func generateSmallProvincesMap(threshold int) error {
 	stateBorderColor := color.RGBA{255, 0, 0, 255}
 	for _, s := range statesMap {
 		for _, p := range s.PixelCoords {
-			_, exists := s.PixelCoords[image.Point{p.X + 1, p.Y}]
+			_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4+3, p.Y*4, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+1, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+2, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y + 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+1, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+2, p.Y*4+3, stateBorderColor)
 				img.Set(p.X*4+3, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X - 1, p.Y}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
 			if !exists {
 				img.Set(p.X*4-1, p.Y*4, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+1, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+2, stateBorderColor)
 				img.Set(p.X*4-1, p.Y*4+3, stateBorderColor)
 			}
-			_, exists = s.PixelCoords[image.Point{p.X, p.Y - 1}]
+			_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
 			if !exists {
 				img.Set(p.X*4, p.Y*4-1, stateBorderColor)
 				img.Set(p.X*4+1, p.Y*4-1, stateBorderColor)
@@ -1515,9 +1802,9 @@ func generateSmallProvincesMap(threshold int) error {
 		n := strconv.FormatInt(int64(p.ID), 10)
 		offset := 0
 		if n != "" {
-			offset = (len(n)*charWidth + len(n) - 1*1) / 2
+			offset = (len(n)*charWidth - strings.Count(n, "1") + len(n) - 1) / 2
 		}
-		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2, 10.0, n)
+		err := addLabel(img, c, p.CenterPoint.X*4-offset, p.CenterPoint.Y*4+charHeight/2+1, 10.0, n)
 		if err != nil {
 			return err
 		}
@@ -1532,13 +1819,13 @@ func generateSmallProvincesMap(threshold int) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'small_provinces_map_x4.png'")
+	fmt.Printf("%s: Saved 'small_provinces_map_x4.png'\n", time.Since(startTime))
 
 	return nil
 }
 
 func generateColorShuffledProvinceMap() error {
-	fmt.Println("Generating color shuffled province map...")
+	fmt.Printf("%s: Generating color shuffled province map...\n", time.Since(startTime))
 
 	// Create empty image and fill it with blue color (water).
 	img := image.NewRGBA(provincesImageSize)
@@ -1592,7 +1879,7 @@ func generateColorShuffledProvinceMap() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Saved 'color_shuffled_province_map.png'")
+	fmt.Printf("%s: Saved 'color_shuffled_province_map.png'\n", time.Since(startTime))
 
 	// Write new definition.csv.
 	var IDs []int
@@ -1614,7 +1901,7 @@ func generateColorShuffledProvinceMap() error {
 			return err
 		}
 	}
-	fmt.Println("Saved 'definition.csv'")
+	fmt.Printf("%s: Saved 'definition.csv'\n", time.Since(startTime))
 
 	return nil
 }
@@ -1648,7 +1935,7 @@ func generateRandomSeaColor() color.RGBA {
 }
 
 func generateProvinceContinentValues(continentsPath string) error {
-	fmt.Println("Generating new province continent values...")
+	fmt.Printf("%s: Generating new province continent values...\n", time.Since(startTime))
 
 	c1 := color.RGBA{75, 43, 7, 255}     // brown: west_coast
 	c2 := color.RGBA{255, 255, 255, 255} // white: northern_reaches
@@ -1685,7 +1972,7 @@ func generateProvinceContinentValues(continentsPath string) error {
 		continent := p.Continent
 
 		var col1 color.RGBA
-		for px := range p.PixelCoords {
+		for _, px := range p.PixelCoords {
 			col2 := continentsImage.At(px.X, px.Y)
 			r1, g1, b1, a1 := col1.RGBA()
 			r2, g2, b2, a2 := col2.RGBA()
@@ -1717,7 +2004,16 @@ func generateProvinceContinentValues(continentsPath string) error {
 			return err
 		}
 	}
-	fmt.Println("Saved 'definition.csv'")
+	fmt.Printf("%s: Saved 'definition.csv'\n", time.Since(startTime))
 
 	return nil
+}
+
+func containsPoint(s []image.Point, a image.Point) bool {
+	for _, b := range s {
+		if b.X == a.X && b.Y == a.Y {
+			return true
+		}
+	}
+	return false
 }
