@@ -24,9 +24,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-// var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
 
-var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
+// var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
 var adjacenciesPath = modPath + "/map/adjacencies.csv"
 var provincesPath = modPath + "/map/provinces.bmp"
@@ -145,41 +145,41 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 
-	// // Write the output file.
-	// err = saveGeoData()
+	// Write the output file.
+	err = saveGeoData()
+	if err != nil {
+		panic(err)
+	}
+
+	// // Generate state ID map.
+	// err = generateSateMap()
 	// if err != nil {
 	// 	panic(err)
 	// }
 
-	// Generate state ID map.
-	err = generateSateMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate state ID map.
+	// err = generateSateIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Generate state ID map.
-	err = generateSateIDMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate province map.
+	// err = generateProvinceMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Generate province map.
-	err = generateProvinceMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate province ID map.
+	// err = generateProvinceIDMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Generate province ID map.
-	err = generateProvinceIDMap()
-	if err != nil {
-		panic(err)
-	}
-
-	// Generate manpower map.
-	err = generateManpowerMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate manpower map.
+	// err = generateManpowerMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate sea province map.
 	// err = generateSeaProvinceMap()
@@ -199,11 +199,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate infrastructure map.
-	err = generateInfrastructureMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate infrastructure map.
+	// err = generateInfrastructureMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate infrastructure map.
 	// err = generateSmallProvincesMap(32)
@@ -408,62 +408,62 @@ func findProvincesCenterPoints() {
 }
 
 func findCenterPoint(coords []image.Point) image.Point {
-	// // Fast centerpoint calculation.
-	// x := 0
-	// y := 0
+	// Fast centerpoint calculation.
+	x := 0
+	y := 0
 
+	for _, c := range coords {
+		x += c.X
+		y += c.Y
+	}
+
+	return image.Point{int(math.Round(float64(x) / float64(len(coords)))), int(math.Round(float64(y) / float64(len(coords))))}
+
+	// // Long largest rects centerpoint calculation.
+	// l := math.MaxInt64
+	// r := math.MinInt64
+	// t := math.MaxInt64
+	// b := math.MinInt64
 	// for _, c := range coords {
-	// 	x += c.X
-	// 	y += c.Y
+	// 	if c.X < l {
+	// 		l = c.X
+	// 	}
+	// 	if c.X > r {
+	// 		r = c.X
+	// 	}
+	// 	if c.Y < t {
+	// 		t = c.Y
+	// 	}
+	// 	if c.Y > b {
+	// 		b = c.Y
+	// 	}
 	// }
 
-	// return image.Point{int(math.Round(float64(x) / float64(len(coords)))), int(math.Round(float64(y) / float64(len(coords))))}
+	// maxRectSize := -1
+	// var maxRect image.Rectangle
+	// line := make([]int, r-l+1)
+	// for y := t; y <= b; y++ {
+	// 	i := 0
+	// 	for x := l; x <= r; x++ {
+	// 		if containsPoint(coords, image.Point{x, y}) {
+	// 			line[i]++
+	// 		} else {
+	// 			line[i] = 0
+	// 		}
+	// 		i++
+	// 	}
+	// 	// fmt.Println(line)
 
-	// Long largest rects centerpoint calculation.
-	l := math.MaxInt64
-	r := math.MinInt64
-	t := math.MaxInt64
-	b := math.MinInt64
-	for _, c := range coords {
-		if c.X < l {
-			l = c.X
-		}
-		if c.X > r {
-			r = c.X
-		}
-		if c.Y < t {
-			t = c.Y
-		}
-		if c.Y > b {
-			b = c.Y
-		}
-	}
+	// 	rectSize, xStart, xEnd, yStart := findLargestRectangle(line)
+	// 	if maxRectSize < rectSize {
+	// 		maxRectSize = rectSize
+	// 		maxRect.Min = image.Point{l + xStart, y - yStart + 1}
+	// 		maxRect.Max = image.Point{l + xEnd - 1, y - 1}
+	// 	}
+	// }
+	// // fmt.Println("> ", l, t, r, b, maxRectSize, maxRect, image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))})
 
-	maxRectSize := -1
-	var maxRect image.Rectangle
-	line := make([]int, r-l+1)
-	for y := t; y <= b; y++ {
-		i := 0
-		for x := l; x <= r; x++ {
-			if containsPoint(coords, image.Point{x, y}) {
-				line[i]++
-			} else {
-				line[i] = 0
-			}
-			i++
-		}
-		// fmt.Println(line)
-
-		rectSize, xStart, xEnd, yStart := findLargestRectangle(line)
-		if maxRectSize < rectSize {
-			maxRectSize = rectSize
-			maxRect.Min = image.Point{l + xStart, y - yStart + 1}
-			maxRect.Max = image.Point{l + xEnd - 1, y - 1}
-		}
-	}
-	// fmt.Println("> ", l, t, r, b, maxRectSize, maxRect, image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))})
-
-	return image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))}
+	// return image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))}
 }
 
 func findLargestRectangle(hist []int) (int, int, int, int) {
@@ -762,6 +762,10 @@ func saveGeoData() error {
 	statesIDs := sortedKeySliceFromStateMap(statesMap)
 	// Iterate over all states in ID sorted order.
 	for _, sID := range statesIDs {
+		if len(statesMap[sID].ConnectedTo) == 0 && len(statesMap[sID].ImpassableTo) == 0 {
+			continue
+		}
+
 		// Write the state id into the output file.
 		_, err = f.WriteString("\t\t\t" + strconv.Itoa(sID) + " = {\n")
 		if err != nil {
@@ -794,16 +798,16 @@ func saveGeoData() error {
 			}
 		}
 
-		// Sort the DistanceTo map.
-		statesDistanceToIDs := sortedKeySliceFromIntMap(statesMap[sID].DistanceTo)
-		// Iterate over all states from DistanceTO map in ID sorted order.
-		for _, dID := range statesDistanceToIDs {
-			// Write the distance_to@STATE variables.
-			_, err = f.WriteString("\t\t\t\tset_variable = { distance_to@" + strconv.Itoa(dID) + " = " + strconv.Itoa(statesMap[sID].DistanceTo[dID]) + " }\n")
-			if err != nil {
-				return err
-			}
-		}
+		// // Sort the DistanceTo map.
+		// statesDistanceToIDs := sortedKeySliceFromIntMap(statesMap[sID].DistanceTo)
+		// // Iterate over all states from DistanceTO map in ID sorted order.
+		// for _, dID := range statesDistanceToIDs {
+		// 	// Write the distance_to@STATE variables.
+		// 	_, err = f.WriteString("\t\t\t\tset_variable = { distance_to@" + strconv.Itoa(dID) + " = " + strconv.Itoa(statesMap[sID].DistanceTo[dID]) + " }\n")
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// }
 
 		// Write the state closing brackets into the output file.
 		_, err = f.WriteString("\t\t\t}\n")
@@ -1303,7 +1307,8 @@ func generateManpowerMap() error {
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
 	// Find highest manpower value in a state.
-	mpMin := 200000
+	// mpMin := 200000
+	mpMin := 1000
 	mpMax := 0
 	for _, s := range statesMap {
 		if s.Manpower > mpMax {
