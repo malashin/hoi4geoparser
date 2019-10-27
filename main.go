@@ -50,6 +50,7 @@ var waterColor = color.RGBA{68, 107, 163, 255}
 var charWidth = 4
 var charHeight = 5
 var startTime time.Time
+var utf8bom = []byte{0xEF, 0xBB, 0xBF}
 
 // Province represents an in-game province with all parsed data in it.
 type Province struct {
@@ -242,6 +243,15 @@ func readLines(path string) ([]string, error) {
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
+
+	// Remove utf-8 bom if found.
+	if len(lines) > 0 {
+		utf8bomString := string(utf8bom)
+		if strings.HasPrefix(lines[0], utf8bomString) {
+			lines[0] = strings.TrimPrefix(lines[0], utf8bomString)
+		}
+	}
+
 	return lines, scanner.Err()
 }
 
@@ -251,6 +261,7 @@ func parseDefinitions() error {
 	if err != nil {
 		return err
 	}
+
 	for _, s := range definitions {
 		province, err := parseDefinitionsProvince(s)
 		if err != nil {
@@ -1307,8 +1318,9 @@ func generateManpowerMap() error {
 	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
 
 	// Find highest manpower value in a state.
-	// mpMin := 200000
-	mpMin := 1000
+	// mpMin := 200000 // Base game
+	// mpMin := 10000 // EaW
+	mpMin := 1000 // OWB
 	mpMax := 0
 	for _, s := range statesMap {
 		if s.Manpower > mpMax {
