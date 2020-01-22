@@ -24,7 +24,7 @@ import (
 	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues_mexico"
+var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
 
 // var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
@@ -43,6 +43,7 @@ var rStateName = regexp.MustCompile(`(?:name[ \n\t]*?=[ \n\t]*?\"(.+?)\")`)
 var rStateManpower = regexp.MustCompile(`(?:manpower[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 ]+).*?})`)
 var rStateInfrastructure = regexp.MustCompile(`(?:infrastructure[ \n\t]*?=[ \n\t]*?(\d+))`)
+var rStateImpassable = regexp.MustCompile(`(?:impassable[ \n\t]*?=[ \n\t]*?yes)`)
 var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
@@ -78,6 +79,7 @@ type State struct {
 	Manpower       int
 	Infrastructure int
 	IsCoastal      bool
+	IsImpassable   bool
 	Continent      int
 	PixelCoords    []image.Point
 	PixelCoordsMap map[image.Point]bool
@@ -146,11 +148,11 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 
-	// Write the output file.
-	err = saveGeoData()
-	if err != nil {
-		panic(err)
-	}
+	// // Write the output file.
+	// err = saveGeoData()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// // Generate state ID map.
 	// err = generateSateMap()
@@ -223,6 +225,12 @@ func main() {
 	// if err != nil {
 	// 	panic(err)
 	// }
+
+	// Generate impassable terrain map.
+	err = generateImpassableMap()
+	if err != nil {
+		panic(err)
+	}
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -567,6 +575,11 @@ func parseState(path string) (state State, err error) {
 		if err != nil {
 			return state, err
 		}
+	}
+
+	r = rStateImpassable.FindStringSubmatch(s)
+	if r != nil {
+		state.IsImpassable = true
 	}
 
 	state.Provinces = make(map[int]*Province)
@@ -1920,6 +1933,35 @@ func generateColorShuffledProvinceMap() error {
 	}
 	fmt.Printf("%s: Saved 'definition.csv'\n", time.Since(startTime))
 
+	return nil
+}
+
+func generateImpassableMap() error {
+	fmt.Printf("%s: Generating impassable terrain map...\n", time.Since(startTime))
+
+	// Create empty image.
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{0, 0, 0, 0}}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	for _, s := range statesMap {
+		if s.IsImpassable {
+			for _, p := range s.PixelCoords {
+				img.Set(p.X, p.Y, color.RGBA{255, 255, 255, 255})
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./impassable_map.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s: Saved 'impassable_map.png'\n", time.Since(startTime))
 	return nil
 }
 
