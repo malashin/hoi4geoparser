@@ -148,11 +148,11 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 
-	// // Write the output file.
-	// err = saveGeoData()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Write the output file.
+	err = saveGeoData()
+	if err != nil {
+		panic(err)
+	}
 
 	// // Generate state ID map.
 	// err = generateSateMap()
@@ -226,11 +226,11 @@ func main() {
 	// 	panic(err)
 	// }
 
-	// Generate impassable terrain map.
-	err = generateImpassableMap()
-	if err != nil {
-		panic(err)
-	}
+	// // Generate impassable terrain map.
+	// err = generateImpassableMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
@@ -786,7 +786,11 @@ func saveGeoData() error {
 	statesIDs := sortedKeySliceFromStateMap(statesMap)
 	// Iterate over all states in ID sorted order.
 	for _, sID := range statesIDs {
-		if len(statesMap[sID].ConnectedTo) == 0 && len(statesMap[sID].ImpassableTo) == 0 {
+		// if len(statesMap[sID].ConnectedTo) == 0 && len(statesMap[sID].ImpassableTo) == 0 {
+		// 	continue
+		// }
+
+		if len(statesMap[sID].ImpassableTo) == 0 && !statesMap[sID].IsImpassable {
 			continue
 		}
 
@@ -796,21 +800,21 @@ func saveGeoData() error {
 			return err
 		}
 
-		if len(statesMap[sID].ConnectedTo) > 0 {
-			// Sort the DistanceTo map.
-			statesConnectedToIDs := sortedKeySliceFromStateMap(statesMap[sID].ConnectedTo)
-			// Iterate over all states from ConnectedTo map in ID sorted order.
-			for _, cID := range statesConnectedToIDs {
-				// Write the connected_to@STATE variables.
-				_, err = f.WriteString("\t\t\t\tset_variable = { connected_to@" + strconv.Itoa(cID) + " = 1 }\n")
-				if err != nil {
-					return err
-				}
-			}
-		}
+		// if len(statesMap[sID].ConnectedTo) > 0 {
+		// 	// Sort the map.
+		// 	statesConnectedToIDs := sortedKeySliceFromStateMap(statesMap[sID].ConnectedTo)
+		// 	// Iterate over all states from ConnectedTo map in ID sorted order.
+		// 	for _, cID := range statesConnectedToIDs {
+		// 		// Write the connected_to@STATE variables.
+		// 		_, err = f.WriteString("\t\t\t\tset_variable = { connected_to@" + strconv.Itoa(cID) + " = 1 }\n")
+		// 		if err != nil {
+		// 			return err
+		// 		}
+		// 	}
+		// }
 
 		if len(statesMap[sID].ImpassableTo) > 0 {
-			// Sort the DistanceTo map.
+			// Sort the map.
 			statesImpassableToIDs := sortedKeySliceFromStateMap(statesMap[sID].ImpassableTo)
 			// Iterate over all states from ImpassableTo map in ID sorted order.
 			for _, aID := range statesImpassableToIDs {
@@ -822,7 +826,15 @@ func saveGeoData() error {
 			}
 		}
 
-		// // Sort the DistanceTo map.
+		if statesMap[sID].IsImpassable {
+			// Write the is_impassable state flag.
+			_, err = f.WriteString("\t\t\t\tset_state_flag = is_impassable\n")
+			if err != nil {
+				return err
+			}
+		}
+
+		// // Sort the map.
 		// statesDistanceToIDs := sortedKeySliceFromIntMap(statesMap[sID].DistanceTo)
 		// // Iterate over all states from DistanceTO map in ID sorted order.
 		// for _, dID := range statesDistanceToIDs {
