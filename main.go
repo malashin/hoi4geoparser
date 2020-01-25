@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/golang/freetype"
-	"github.com/hotei/bmp"
+	bmp "github.com/jsummers/gobmp"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
 )
@@ -156,6 +156,12 @@ func main() {
 
 	// // Generate state ID map.
 	// err = generateSateMap()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// // Generate state ID map.
+	// err = generateColoredSateMap()
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -392,6 +398,8 @@ func parseProvinces() error {
 
 			// Get the color of the current pixel.
 			c := provincesImage.At(x, y)
+			r, g, b, a := c.RGBA()
+			c = color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
 
 			// Add pixel coordinates to the province that has this RGB value.
 			provincesRGBMap[c].PixelCoordsMap[image.Point{x, y}] = true
@@ -400,9 +408,13 @@ func parseProvinces() error {
 			// Find out the color of the adjacent right and bottom pixels.
 			if x < provincesImage.Bounds().Max.X-1 {
 				e = provincesImage.At(x+1, y)
+				r, g, b, a := e.RGBA()
+				e = color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
 			}
 			if y < provincesImage.Bounds().Max.Y-1 {
 				s = provincesImage.At(x, y+1)
+				r, g, b, a := s.RGBA()
+				s = color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
 			}
 
 			// If color is different then this two provinces are adjacent.
@@ -1010,6 +1022,43 @@ func generateSateMap() error {
 		return err
 	}
 	fmt.Printf("%s: Saved 'state_map.png'\n", time.Since(startTime))
+	return nil
+}
+
+func generateColoredSateMap() error {
+	fmt.Printf("%s: Generating colored state map...\n", time.Since(startTime))
+
+	// Create empty image and fill it with blue color (water).
+	img := image.NewRGBA(provincesImageSize)
+	draw.Draw(img, img.Bounds(), &image.Uniform{waterColor}, image.ZP, draw.Src)
+
+	// Draw state shapes.
+	for _, s := range statesMap {
+		generateRandomStateColor(s, 0)
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, s.RenderColor)
+		}
+	}
+
+	// Draw lake province shapes over the land.
+	for _, prov := range provincesIDMap {
+		if prov.Type == "lake" {
+			for _, p := range prov.PixelCoords {
+				img.Set(p.X, p.Y, waterColor)
+			}
+		}
+	}
+
+	// Save image as PNG.
+	out, err := os.Create("./state_map_colored.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(out, img)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s: Saved 'state_map_colored.png'\n", time.Since(startTime))
 	return nil
 }
 
@@ -2040,33 +2089,35 @@ func generateProvinceContinentValues(continentsPath string) error {
 
 	for _, id := range IDs {
 		p := provincesIDMap[id]
-		continent := p.Continent
+		continent := 0
 
-		var col1 color.RGBA
-		for _, px := range p.PixelCoords {
-			col2 := continentsImage.At(px.X, px.Y)
-			r1, g1, b1, a1 := col1.RGBA()
-			r2, g2, b2, a2 := col2.RGBA()
+		if p.Terrain != "ocean" {
+			var col1 color.RGBA
+			for _, px := range p.PixelCoords {
+				col2 := continentsImage.At(px.X, px.Y)
+				r1, g1, b1, a1 := col1.RGBA()
+				r2, g2, b2, a2 := col2.RGBA()
 
-			if a1 != 0 && r1 != r2 && g1 != g2 && b1 != b2 && a1 != a2 {
-				return fmt.Errorf("Different continent colors in province %v at %v", p.ID, px)
-			}
+				if a1 != 0 && r1 != r2 && g1 != g2 && b1 != b2 && a1 != a2 {
+					return fmt.Errorf("Different continent colors in province %v at %v", p.ID, px)
+				}
 
-			col1 = col2.(color.RGBA)
+				col1 = col2.(color.RGBA)
 
-			switch fmt.Sprintf("%v", col2) {
-			case fmt.Sprintf("%v", c1):
-				continent = 1
-			case fmt.Sprintf("%v", c2):
-				continent = 2
-			case fmt.Sprintf("%v", c3):
-				continent = 3
-			case fmt.Sprintf("%v", c4):
-				continent = 4
-			case fmt.Sprintf("%v", c5):
-				continent = 5
-			case fmt.Sprintf("%v", c6):
-				continent = 6
+				switch fmt.Sprintf("%v", col2) {
+				case fmt.Sprintf("%v", c1):
+					continent = 1
+				case fmt.Sprintf("%v", c2):
+					continent = 2
+				case fmt.Sprintf("%v", c3):
+					continent = 3
+				case fmt.Sprintf("%v", c4):
+					continent = 4
+				case fmt.Sprintf("%v", c5):
+					continent = 5
+				case fmt.Sprintf("%v", c6):
+					continent = 6
+				}
 			}
 		}
 
