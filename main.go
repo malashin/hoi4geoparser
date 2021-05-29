@@ -1,5 +1,6 @@
 package main
 
+// MODIFIED TO OUTPUT STATE CENTERS AS A CSV
 import (
 	"bufio"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"image/color"
 	"image/png"
 	"io/ioutil"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -24,7 +26,7 @@ import (
 	"golang.org/x/image/font"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
+var modPath = "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
 
 // var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
@@ -84,6 +86,7 @@ type State struct {
 	PixelCoords    []image.Point
 	PixelCoordsMap map[image.Point]bool
 	CenterPoint    image.Point
+	CenterPointRec image.Point
 	Provinces      map[int]*Province
 	DistanceTo     map[int]int // Distance to other states.
 	AdjacentTo     map[int]*State
@@ -153,7 +156,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	err = createStatePngFiles()
+	if err != nil {
+		panic(err)
+	}
+	err = createStateCenterPointsCSV()
+	if err != nil {
+		panic(err)
+	}
 	// // Generate state ID map.
 	// err = generateSateMap()
 	// if err != nil {
@@ -497,6 +507,22 @@ func findCenterPoint(coords []image.Point) image.Point {
 	// return image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))}
 }
 
+func findAverageRadius(coords []image.Point, centerPoint image.Point) float64 {
+	var radiusCenter float64 = 1.0
+	for _, c := range coords {
+		//Find cord distance to coordinate point
+		rad := math.Sqrt(float64((c.X) ^ 2 + (c.Y) ^ 2))
+		//multiply
+		rad = math.Log(rad)
+		radiusCenter += rad
+		//fmt.Printf("radius of point: %v \n ", radiusCenter)
+	}
+	//Find geometric mean
+	radiusCenter = math.Exp(radiusCenter / float64(len(coords)))
+	//fmt.Printf("radius of state: %v \n Done State \n", radiusCenter)
+	return radiusCenter
+}
+
 func findLargestRectangle(hist []int) (int, int, int, int) {
 	var h, pos, tempH, tempPos int
 	var xStart, xEnd, yStart int
@@ -562,7 +588,6 @@ func parseState(path string) (state State, err error) {
 		return state, err
 	}
 	s := strings.Replace(string(b), "\r\n", "\n", -1)
-
 	state.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
 	if err != nil {
 		return state, err
@@ -579,6 +604,7 @@ func parseState(path string) (state State, err error) {
 		if err != nil {
 			return state, err
 		}
+
 	}
 
 	r = rStateInfrastructure.FindStringSubmatch(s)
@@ -587,6 +613,7 @@ func parseState(path string) (state State, err error) {
 		if err != nil {
 			return state, err
 		}
+
 	}
 
 	r = rStateImpassable.FindStringSubmatch(s)
@@ -598,6 +625,7 @@ func parseState(path string) (state State, err error) {
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
 	for _, p := range provinces {
 		pID, err := strconv.Atoi(p)
+
 		if err != nil {
 			return state, err
 		}
@@ -609,7 +637,6 @@ func parseState(path string) (state State, err error) {
 	state.AdjacentTo = make(map[int]*State)
 	state.ConnectedTo = make(map[int]*State)
 	state.ImpassableTo = make(map[int]*State)
-
 	return state, nil
 }
 
@@ -660,7 +687,6 @@ func parseStatesProvinces() {
 		// Find the center point of the state.
 		// fmt.Printf("%s: Calculating states center point coordinates...\n", time.Since(startTime))
 		s1.CenterPoint = findCenterPoint(s1.PixelCoords)
-
 		// If state has provinces with non-empty impassableTo field.
 		// Check if all provinces adjacent to another state are impassable to it.
 		// If that's the case, then add this state to impassableTo filed of the first sate.
@@ -2138,4 +2164,154 @@ func containsPoint(s []image.Point, a image.Point) bool {
 		}
 	}
 	return false
+}
+
+var csvFileContents []string
+
+func createStateCenterPointsCSV() error {
+	fmt.Printf("%s: Generating CSV output for state centers...\n", time.Since(startTime))
+	f, err := os.Create("state_centers_on_actions.txt")
+	defer f.Close()
+	if err != nil {
+		log.Fatalln("failed to open file", err)
+	}
+	csvFileContents = append(csvFileContents, `
+	on_actions = {
+		on_startup = {
+			effect = {
+	`)
+	for _, s := range statesMap {
+		id := fmt.Sprintf("%v", s.ID)
+		centerX := fmt.Sprintf("%v", s.CenterPointRec.X)
+		centerY := fmt.Sprintf("%v", s.CenterPointRec.Y)
+		//rowSlice := []string{id, centerX, centerY}
+		rowSlice := fmt.Sprintf(`
+
+			%[1]v = {
+				set_variable = { map_x_position = %[2]v }
+				set_variable = { map_y_position = %[3]v }
+			}
+
+		`, id, centerX, centerY)
+		csvFileContents = append(csvFileContents, rowSlice)
+	}
+	csvFileContents = append(csvFileContents, `
+
+			}
+		}
+	}
+
+	`)
+	for _, w := range csvFileContents {
+		_, err := f.WriteString(w)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return nil
+}
+
+var fileContents []string
+
+var fileHeader string = `spriteTypes = {
+	`
+var spriteHeader = `spriteType = {
+	name = "GFX_custom_map_state_image_`
+var spriteTexture = `
+	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
+var spriteFooter = `
+	noOfFrames = 3
+	alwaystransparent = yes
+	}
+
+`
+
+func createStatePngFiles() error {
+	fmt.Printf("%s: Creating state images! \n", time.Since(startTime))
+
+	// Set up folder
+	_, err := os.Stat("state_images")
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll("state_images", 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	fileContents = append(fileContents, fileHeader)
+	// Loop!
+	for _, s := range statesMap {
+		// Find largest dimension
+		var xMin int = s.PixelCoords[0].X
+		var xMax int
+		var yMin int = s.PixelCoords[0].Y
+		var yMax int
+		// Find bounds
+		for _, c := range s.PixelCoords {
+			if c.X < xMin {
+				xMin = c.X
+			}
+			if c.X > xMax {
+				xMax = c.X
+			}
+			if c.Y < yMin {
+				yMin = c.Y
+			}
+			if c.Y > yMax {
+				yMax = c.Y
+			}
+		}
+		xRange := xMax - xMin
+		//imgWidth := xMax - xMin
+		//imgHieght := yMax - yMin
+
+		// add 2x more space onto the end to create a strip
+		imgSize := image.Rect(xMin, yMin, (xMax + 2*(xRange)), yMax)
+		widthX := (xMax - xMin) / 2
+		heightY := (yMax - yMin) / 2
+		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
+		img := image.NewNRGBA(imgSize)
+		alphaCol := color.RGBA{0, 0, 0, 0}
+		draw.Draw(img, img.Bounds(), &image.Uniform{alphaCol}, image.ZP, draw.Src)
+		/// Non-premultiplied because it fucks up when its premultiplied. PNG doesn't enjoy that shit
+		greenCol := color.NRGBA{43, 227, 71, 230}
+		yellowCol := color.NRGBA{237, 240, 8, 150}
+		redCol := color.NRGBA{240, 29, 8, 120}
+		for _, p := range s.PixelCoords {
+			img.Set(p.X, p.Y, redCol)
+			img.Set(p.X+xRange, p.Y, yellowCol)
+			img.Set(p.X+(2*xRange), p.Y, greenCol)
+		}
+		idString := fmt.Sprintf("%v", s.ID)
+		fmt.Printf("Path: %s: \n", ("state_images/state_image" + idString + ".png"))
+		out, err := os.Create(("state_images/state_image_" + idString + ".png"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer out.Close()
+		err = png.Encode(out, img)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// create slice of file
+		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFooter
+		fileContents = append(fileContents, fileSection)
+	}
+	fileContents = append(fileContents, "\n}")
+	f, err := os.Create("state_images/custom_states_generated_state_images.gfx")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	for _, w := range fileContents {
+		_, err := f.WriteString(w)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	return nil
 }
