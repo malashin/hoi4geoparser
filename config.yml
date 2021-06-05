@@ -1,0 +1,14 @@
+﻿modPath: "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
+image_repeats: 3
+
+colors:
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180

@@ -3,6 +3,7 @@ package main
 // MODIFIED TO OUTPUT STATE CENTERS AS A CSV
 import (
 	"bufio"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"image"
@@ -24,6 +25,7 @@ import (
 	bmp "github.com/jsummers/gobmp"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
+	"gopkg.in/yaml.v2"
 )
 
 var modPath = "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
@@ -55,6 +57,21 @@ var charHeight = 5
 var startTime time.Time
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
 
+//var image_Size = 0.5
+var image_repeats int = 5
+var colors = []color.NRGBA{}
+
+type Config struct {
+	ModPath       string `yaml:"modPath"`
+	Image_repeats int    `yaml:"image_repeats"`
+	Color         []struct {
+		R uint8 `yaml:"r"`
+		G uint8 `yaml:"g"`
+		B uint8 `yaml:"b"`
+		A uint8 `yaml:"a"`
+	} `yaml:"colors"`
+}
+
 // Province represents an in-game province with all parsed data in it.
 type Province struct {
 	ID              int
@@ -74,6 +91,8 @@ type Province struct {
 	RenderColor     color.RGBA
 }
 
+var StateSizeFactor float64 = 60
+
 // State represents an in-game state with all parsed data in it.
 type State struct {
 	ID             int
@@ -86,7 +105,7 @@ type State struct {
 	PixelCoords    []image.Point
 	PixelCoordsMap map[image.Point]bool
 	CenterPoint    image.Point
-	CenterPointRec image.Point
+	StateSize      float64
 	Provinces      map[int]*Province
 	DistanceTo     map[int]int // Distance to other states.
 	AdjacentTo     map[int]*State
@@ -105,9 +124,34 @@ type StrategicRegion struct {
 	CenterPoint    image.Point
 }
 
+func processError(err error) {
+	fmt.Println("Error:", err)
+}
+func (c *Config) getConf() *Config {
+
+	yamlFile, err := ioutil.ReadFile("config.yml")
+	if err != nil {
+		log.Printf("yamlFile.Get err   #%v ", err)
+	}
+	err = yaml.Unmarshal(yamlFile, c)
+	if err != nil {
+		log.Fatalf("Unmarshal: %v", err)
+	}
+
+	return c
+}
 func main() {
 	// Track start time for benchmarking.
 	startTime = time.Now()
+	// Parse Config
+	var cfg Config
+	cfg.getConf()
+	for _, c := range cfg.Color {
+		colorNRGBA := color.NRGBA{c.R, c.G, c.B, c.A}
+		colors = append(colors, colorNRGBA)
+	}
+	modPath = cfg.ModPath
+	image_repeats = len(colors)
 
 	// Parse  definition.csv for provinces.
 	err := parseDefinitions()
@@ -150,61 +194,87 @@ func main() {
 
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(`Enter maps to generate:
+	generateTerrainMaps
+	saveStatePngs
+	generateStateMaps
+	generateProvinceMaps
+	--------------------
 
-	// Write the output file.
+	`)
+	text, _ := reader.ReadString('\n')
 	err = saveGeoData()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
-	err = createStatePngFiles()
-	if err != nil {
-		panic(err)
-	}
-	err = createStateCenterPointsCSV()
-	if err != nil {
-		panic(err)
+	if strings.Contains(text, "saveStatePngs") {
+		// Write the output file.
+		err = createStateCenterPointsCSV()
+		if err != nil {
+			processError(err)
+		}
+		err = createStatePngFiles()
+		if err != nil {
+			processError(err)
+		}
 	}
 	// // Generate state ID map.
-	// err = generateSateMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate state ID map.
-	// err = generateColoredSateMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate state ID map.
-	// err = generateSateIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate province map.
-	// err = generateProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate province ID map.
-	// err = generateProvinceIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate manpower map.
-	// err = generateManpowerMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate sea province map.
-	// err = generateSeaProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	if strings.Contains(text, "generateStateMaps") {
+		err = generateSateMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateColoredSateMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSateIDMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateInfrastructureMap()
+		if err != nil {
+			processError(err)
+		}
+		// Generate manpower map.
+		err = generateManpowerMap()
+		if err != nil {
+			processError(err)
+		}
+	}
+	if strings.Contains(text, "generateProvinceMaps") {
+		err = generateProvinceMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateProvinceIDMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSeaProvinceMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSmallProvincesMap(32)
+		if err != nil {
+			processError(err)
+		}
+	}
+	if strings.Contains(text, "generateTerrainMaps") {
+		err = generateProvinceBasedHeightmapThresholdMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateProvinceBasedTerrainMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateImpassableMap()
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	// // Generate province-based terrain map.
 	// err = generateProvinceBasedTerrainMap()
@@ -214,18 +284,6 @@ func main() {
 
 	// // Generate province-based heightmap threshold map.
 	// err = generateProvinceBasedHeightmapThresholdMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate infrastructure map.
-	// err = generateInfrastructureMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate infrastructure map.
-	// err = generateSmallProvincesMap(32)
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -251,6 +309,7 @@ func main() {
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
+	time.Sleep(3 * time.Hour)
 }
 
 // ReadLines reads a whole file
@@ -687,6 +746,7 @@ func parseStatesProvinces() {
 		// Find the center point of the state.
 		// fmt.Printf("%s: Calculating states center point coordinates...\n", time.Since(startTime))
 		s1.CenterPoint = findCenterPoint(s1.PixelCoords)
+		s1.StateSize = findAverageRadius(s1.PixelCoords, s1.CenterPoint)
 		// If state has provinces with non-empty impassableTo field.
 		// Check if all provinces adjacent to another state are impassable to it.
 		// If that's the case, then add this state to impassableTo filed of the first sate.
@@ -2166,48 +2226,28 @@ func containsPoint(s []image.Point, a image.Point) bool {
 	return false
 }
 
-var csvFileContents []string
+var csvFileContents [][]string
 
 func createStateCenterPointsCSV() error {
 	fmt.Printf("%s: Generating CSV output for state centers...\n", time.Since(startTime))
-	f, err := os.Create("state_centers_on_actions.txt")
+	f, err := os.Create("state-centers.csv")
 	defer f.Close()
 	if err != nil {
 		log.Fatalln("failed to open file", err)
 	}
-	csvFileContents = append(csvFileContents, `
-	on_actions = {
-		on_startup = {
-			effect = {
-	`)
+	w := csv.NewWriter(f)
+	defer w.Flush()
 	for _, s := range statesMap {
 		id := fmt.Sprintf("%v", s.ID)
-		centerX := fmt.Sprintf("%v", s.CenterPointRec.X)
-		centerY := fmt.Sprintf("%v", s.CenterPointRec.Y)
-		//rowSlice := []string{id, centerX, centerY}
-		rowSlice := fmt.Sprintf(`
-
-			%[1]v = {
-				set_variable = { map_x_position = %[2]v }
-				set_variable = { map_y_position = %[3]v }
-			}
-
-		`, id, centerX, centerY)
+		centerX := fmt.Sprintf("%v", s.CenterPoint.X)
+		centerY := fmt.Sprintf("%v", s.CenterPoint.Y)
+		scaleFactor := fmt.Sprintf("%.3v", (s.StateSize / StateSizeFactor))
+		rowSlice := []string{id, centerX, centerY, scaleFactor}
 		csvFileContents = append(csvFileContents, rowSlice)
 	}
-	csvFileContents = append(csvFileContents, `
-
-			}
-		}
-	}
-
-	`)
-	for _, w := range csvFileContents {
-		_, err := f.WriteString(w)
-
-		if err != nil {
-			log.Fatal(err)
-		}
+	err = w.WriteAll(csvFileContents)
+	if err != nil {
+		log.Fatal(err)
 	}
 	return nil
 }
@@ -2220,10 +2260,11 @@ var spriteHeader = `spriteType = {
 	name = "GFX_custom_map_state_image_`
 var spriteTexture = `
 	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
+var spriteFrames = `
+	noOfFrames = `
 var spriteFooter = `
-	noOfFrames = 3
 	alwaystransparent = yes
-	}
+}
 
 `
 
@@ -2241,13 +2282,13 @@ func createStatePngFiles() error {
 	}
 	fileContents = append(fileContents, fileHeader)
 	// Loop!
+	fmt.Printf("%s: Generating State Images for %v states using %v colors", time.Since(startTime), len(statesMap), len(colors))
 	for _, s := range statesMap {
 		// Find largest dimension
 		var xMin int = s.PixelCoords[0].X
 		var xMax int
 		var yMin int = s.PixelCoords[0].Y
 		var yMax int
-		// Find bounds
 		for _, c := range s.PixelCoords {
 			if c.X < xMin {
 				xMin = c.X
@@ -2267,24 +2308,20 @@ func createStatePngFiles() error {
 		//imgHieght := yMax - yMin
 
 		// add 2x more space onto the end to create a strip
-		imgSize := image.Rect(xMin, yMin, (xMax + 2*(xRange)), yMax)
-		widthX := (xMax - xMin) / 2
-		heightY := (yMax - yMin) / 2
-		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
-		img := image.NewNRGBA(imgSize)
+		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+1)), yMax)
+		img := image.NewRGBA(imgSize)
 		alphaCol := color.RGBA{0, 0, 0, 0}
 		draw.Draw(img, img.Bounds(), &image.Uniform{alphaCol}, image.ZP, draw.Src)
-		/// Non-premultiplied because it fucks up when its premultiplied. PNG doesn't enjoy that shit
-		greenCol := color.NRGBA{43, 227, 71, 230}
-		yellowCol := color.NRGBA{237, 240, 8, 150}
-		redCol := color.NRGBA{240, 29, 8, 120}
-		for _, p := range s.PixelCoords {
-			img.Set(p.X, p.Y, redCol)
-			img.Set(p.X+xRange, p.Y, yellowCol)
-			img.Set(p.X+(2*xRange), p.Y, greenCol)
+		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
+			offset_X := (xRange + 1) * tileNumber
+			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
+			//offset_Y := ()
+			for _, p := range s.PixelCoords {
+				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
+			}
 		}
 		idString := fmt.Sprintf("%v", s.ID)
-		fmt.Printf("Path: %s: \n", ("state_images/state_image" + idString + ".png"))
+		//fmt.Printf("Path: %s: \n", ("state_images/state_image" + idString + ".png"))
 		out, err := os.Create(("state_images/state_image_" + idString + ".png"))
 		if err != nil {
 			log.Fatal(err)
@@ -2295,7 +2332,7 @@ func createStatePngFiles() error {
 			log.Fatal(err)
 		}
 		// create slice of file
-		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFooter
+		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
 		fileContents = append(fileContents, fileSection)
 	}
 	fileContents = append(fileContents, "\n}")
