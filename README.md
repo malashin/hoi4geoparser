@@ -7,24 +7,12 @@ Used to generate image based terrain maps from hoi4 data. Originally written by 
 - [Русский](https://github.com/ICodeMaster/hoi4geoparser/blob/master/README-RU.md)
 
 ### Install hoi4geoparser
-1. **Install Go** 
-- Open url in browser - <https://golang.org/dl/>
-- Select the compiled package for your OS - Windows, Linux, Mac OS
-- Install it on your PC.
+- Download the binary from the [releases page](https://github.com/ICodeMaster/hoi4geoparser/releases)
+- Run the geoparser once to generate a config file. 
+- Edit the config file to point to the mod or game path
+- Run the geoparser and input the maps to generate when prompted
 
-2. **Download Repo**
-- You can download this repository as a [zip archive](https://github.com/ICodeMaster/hoi4geoparser/archive/refs/heads/master.zip)
-- Clone it using git:
-``git clone https://github.com/ICodeMaster/hoi4geoparser.git``
-
-### Using:
-1. Open the main.go in convenient code editor (Notepad++, VS Code, Sublime). 
-2. Replace the path to the mod with the path on your pc.
-
-Example: ``var modPath = "C:/Users/User/Documents/your-mod"`` 
-
-3. Open the Terminal (command line or cmd or console) and write it down ``go run .\main.go``
-4. Insert into your mod:
+### Add files for custom map modes to the mod
 - Copy the ``state_images`` folder into ``gfx/interface/custom_map_modes/`` in your mod
 - Copy the ``custom_states_generated_state_images.gfx`` in ``state_images`` into the ``/interface/`` folder your mod. 
 - Copy the ``state_centers_on_actions.txt`` into ``common/on_actions``
