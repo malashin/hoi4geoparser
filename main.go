@@ -3,6 +3,7 @@ package main
 // MODIFIED TO OUTPUT STATE CENTERS AS A CSV
 import (
 	"bufio"
+	_ "embed"
 	"errors"
 	"fmt"
 	"image"
@@ -56,6 +57,9 @@ var charWidth = 4
 var charHeight = 5
 var startTime time.Time
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
+
+//go:embed smallest_pixel-7.ttf
+var fontBytes []byte
 
 //var image_Size = 0.5
 var image_repeats int = 5
@@ -1296,10 +1300,6 @@ func generateSateIDMap() error {
 
 func initFont(img *image.RGBA) (*freetype.Context, error) {
 	// Read the font data.
-	fontBytes, err := ioutil.ReadFile("smallest_pixel-7.ttf")
-	if err != nil {
-		return nil, err
-	}
 	f, err := freetype.ParseFont(fontBytes)
 	if err != nil {
 		return nil, err
