@@ -13,11 +13,9 @@
 - Запустите hoi4geoparser.
 
 ### Добавление сгенерированных файлов для пользовательских режимов карты в вашем моде:
-- Скопируйте папку ``state_images`` в``gfx/interface/custom_map_modes/`` в вашем моде
+- Скопируйте папку ``state_images`` в``gfx/interface/custom_map_modes/`` вашего мода.
 - Скопируйте файл ``custom_states_generated_state_images.gfx`` в ``state_images`` в папку ``/interface/`` вашего мода. 
 - Скопируйте ``state_centers_on_actions.txt`` в ``common/on_actions``
-
-Запустите геопарсер и введите карты для создания при появлении запроса
 
 ____
 Переведено [sepera_okeq](https://github.com/Sepera-okeq).
