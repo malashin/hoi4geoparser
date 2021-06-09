@@ -28,6 +28,7 @@ import (
 )
 
 var modPath = "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
+var configPath = "config.yml"
 
 // var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
@@ -70,6 +71,23 @@ type Config struct {
 		A uint8 `yaml:"a"`
 	} `yaml:"colors"`
 }
+
+var defaultConfig = `
+modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+image_repeats: 3
+
+colors:
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180
+`
 
 // Province represents an in-game province with all parsed data in it.
 type Province struct {
@@ -126,10 +144,25 @@ type StrategicRegion struct {
 
 func processError(err error) {
 	fmt.Println("Error:", err)
+	fmt.Scanln()
 }
 func (c *Config) getConf() *Config {
-
-	yamlFile, err := ioutil.ReadFile("config.yml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		defaultFile, err := os.Create(configPath)
+		if err != nil {
+			processError(err)
+		}
+		defer defaultFile.Close()
+		_, err = defaultFile.WriteString(defaultConfig)
+		if err != nil {
+			processError(err)
+		}
+		defaultFile.Sync()
+		fmt.Printf("Creating Config File, please exit and edit to preference")
+		fmt.Scanln()
+		os.Exit(0)
+	}
+	yamlFile, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		log.Printf("yamlFile.Get err   #%v ", err)
 	}
@@ -140,6 +173,7 @@ func (c *Config) getConf() *Config {
 
 	return c
 }
+
 func main() {
 	// Track start time for benchmarking.
 	startTime = time.Now()
@@ -151,12 +185,13 @@ func main() {
 		colors = append(colors, colorNRGBA)
 	}
 	modPath = cfg.ModPath
+	getModPaths(modPath)
 	image_repeats = len(colors)
 
 	// Parse  definition.csv for provinces.
 	err := parseDefinitions()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse  adjacencies.csv for province connections and impassable borders.
@@ -310,12 +345,27 @@ func main() {
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
-	time.Sleep(3 * time.Hour)
+	fmt.Scanln()
+}
+func getModPaths(pathToInstall string) {
+	definitionsPath = pathToInstall + "/map/definition.csv"
+	adjacenciesPath = pathToInstall + "/map/adjacencies.csv"
+	provincesPath = pathToInstall + "/map/provinces.bmp"
+	terrainPath = pathToInstall + "/map/terrain.bmp"
+	heightmapPath = pathToInstall + "/map/heightmap.bmp"
+	statesPath = pathToInstall + "/history/states"
+	strategicRegionPath = pathToInstall + "/map/strategicregions"
 }
 
 // ReadLines reads a whole file
 // and returns a slice of its lines.
 func readLines(path string) ([]string, error) {
+	_, err := os.Stat(path)
+	if err != nil {
+		fmt.Printf("File not found: %v", path)
+		fmt.Scanln()
+		return nil, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
