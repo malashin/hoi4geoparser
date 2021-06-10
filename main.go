@@ -46,7 +46,7 @@ var strategicRegionMap = make(map[int]*StrategicRegion)
 var rStateID = regexp.MustCompile(`(?:id[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateName = regexp.MustCompile(`(?:name[ \n\t]*?=[ \n\t]*?\"(.+?)\")`)
 var rStateManpower = regexp.MustCompile(`(?:manpower[ \n\t]*?=[ \n\t]*?(\d+))`)
-var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 ]+).*?})`)
+var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 \s]+).*?})`)
 var rStateInfrastructure = regexp.MustCompile(`(?:infrastructure[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateImpassable = regexp.MustCompile(`(?:impassable[ \n\t]*?=[ \n\t]*?yes)`)
 var rSpace = regexp.MustCompile(`\s+`)
@@ -228,21 +228,27 @@ func main() {
 	// Parse state files.
 	err = parseStrategicRegionFiles()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print(`Enter maps to generate:
-	generateTerrainMaps
-	saveStatePngs
-	generateStateMaps
-	generateProvinceMaps
-	--------------------
+	text := ""
+	if strings.Contains(os.Args[1], "debug") {
+		fmt.Print("Debug Mode\n")
+		text = "saveStatePngs generateStateMaps generateProvinceMaps generateTerrainMaps"
+	} else {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print(`Enter maps to generate:
+		generateTerrainMaps
+		saveStatePngs
+		generateStateMaps
+		generateProvinceMaps
+		--------------------
 
-	`)
-	text, _ := reader.ReadString('\n')
+		`)
+		text, _ = reader.ReadString('\n')
+	}
 	err = saveGeoData()
 	if err != nil {
 		processError(err)
@@ -737,6 +743,7 @@ func parseState(path string) (state State, err error) {
 
 	state.Provinces = make(map[int]*Province)
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
+	//fmt.Printf("Provinces: %v", provinces)
 	for _, p := range provinces {
 		pID, err := strconv.Atoi(p)
 
@@ -862,6 +869,7 @@ func parseStrategicRegionFiles() error {
 	for _, r := range strategicRegionFiles {
 		strategicRegion, err := parseStrategicRegion(r)
 		if err != nil {
+			//fmt.Printf("Error in Region: %v", strategicRegion)
 			return err
 		}
 		strategicRegionMap[strategicRegion.ID] = &strategicRegion
@@ -888,12 +896,15 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 
 	strategicRegion.Provinces = make(map[int]*Province)
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
+	//fmt.Printf("Strat Provinces for %v: %v", strategicRegion.ID, provinces)
 	for _, p := range provinces {
-		pID, err := strconv.Atoi(p)
-		if err != nil {
-			return strategicRegion, err
+		if len(p) > 0 {
+			pID, err := strconv.Atoi(p)
+			if err != nil {
+				return strategicRegion, err
+			}
+			strategicRegion.Provinces[pID] = provincesIDMap[pID]
 		}
-		strategicRegion.Provinces[pID] = provincesIDMap[pID]
 	}
 
 	strategicRegion.PixelCoordsMap = make(map[image.Point]bool)
