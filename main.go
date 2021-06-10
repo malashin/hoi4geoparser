@@ -355,7 +355,11 @@ func main() {
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
-	fmt.Scanln()
+	if strings.Contains(os.Args[1], "debug") {
+		fmt.Print("Debug Complete \n")
+	} else {
+		fmt.Scanln()
+	}
 }
 func getModPaths(pathToInstall string) {
 	definitionsPath = pathToInstall + "/map/definition.csv"
@@ -2363,7 +2367,7 @@ func createStatePngFiles() error {
 	}
 	fileContents = append(fileContents, fileHeader)
 	// Loop!
-	fmt.Printf("%s: Generating State Images for %v states using %v colors", time.Since(startTime), len(statesMap), len(colors))
+	fmt.Printf("%s: Generating State Images for %v states using %v colors\n", time.Since(startTime), len(statesMap), len(colors))
 	for _, s := range statesMap {
 		// Find largest dimension
 		var xMin int = s.PixelCoords[0].X
