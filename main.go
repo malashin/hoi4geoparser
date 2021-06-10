@@ -234,12 +234,12 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 	text := ""
-	if strings.Contains(os.Args[1], "debug") {
-		fmt.Print("Debug Mode\n")
-		text = "saveStatePngs generateStateMaps generateProvinceMaps generateTerrainMaps"
-	} else {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print(`Enter maps to generate:
+	// if strings.Contains(os.Args[:1], "debug") {
+	// 	fmt.Print("Debug Mode\n")
+	// 	text = "saveStatePngs generateStateMaps generateProvinceMaps generateTerrainMaps"
+	// } else {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(`Enter maps to generate:
 		generateTerrainMaps
 		saveStatePngs
 		generateStateMaps
@@ -247,8 +247,8 @@ func main() {
 		--------------------
 
 		`)
-		text, _ = reader.ReadString('\n')
-	}
+	text, _ = reader.ReadString('\n')
+	// }
 	err = saveGeoData()
 	if err != nil {
 		processError(err)
@@ -919,6 +919,7 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 func parseStrategicRegionsProvinces() {
 	fmt.Printf("%s: Parsing provinces in each strategic region...\n", time.Since(startTime))
 	for _, r := range strategicRegionMap {
+		fmt.Printf("Finished: %v \n", r.ID)
 		for _, p := range r.Provinces {
 			// Fill in each strategic regions pixel coordinates.
 			for _, pc := range p.PixelCoords {
