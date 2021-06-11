@@ -40,7 +40,7 @@ var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var strategicRegionPath = modPath + "/map/strategicregions"
-var atlasPath = hoi4Path + "/atlas0.png"
+var atlasPath = "atlas0.png"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
@@ -2460,12 +2460,11 @@ func createStateBackdrop() error {
 		processError(err)
 	}
 	defer reader.Close()
-	atlasImage, format, err := image.Decode(reader)
+	atlasImage, _, err := image.Decode(reader)
 	if err != nil {
 		processError(err)
 	}
-	fmt.Printf("Format of Atlas: %v", format)
-	writer, err := os.Create("/atlas_output.png")
+	writer, err := os.Create("atlas_output.png")
 	if err != nil {
 		processError(err)
 	}
