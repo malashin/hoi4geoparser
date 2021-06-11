@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/disintegration/gift"
 	"github.com/golang/freetype"
 	bmp "github.com/jsummers/gobmp"
 	"golang.org/x/image/draw"
@@ -41,7 +40,7 @@ var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var strategicRegionPath = modPath + "/map/strategicregions"
-var atlasPath = hoi4Path + "/map/atlas0.dds"
+var atlasPath = hoi4Path + "/atlas0.png"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
@@ -70,9 +69,9 @@ var image_repeats int = 5
 var colors = []color.NRGBA{}
 
 type Config struct {
-	ModPath  string `yaml:"modPath"`
-	Hoi4Path string `yaml: "hoi4Path"`
-	Color    []struct {
+	ModPath string `yaml:"modPath"`
+	HoiPath string `yaml:"hoi4Path"`
+	Color   []struct {
 		R uint8 `yaml:"r"`
 		G uint8 `yaml:"g"`
 		B uint8 `yaml:"b"`
@@ -82,7 +81,7 @@ type Config struct {
 
 var defaultConfig = `
 modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
-Hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
 
 colors:
   - color:
@@ -151,8 +150,8 @@ type StrategicRegion struct {
 }
 
 func processError(err error) {
-	fmt.Println("Error:", err)
-	fmt.Scanln()
+	fmt.Printf("Error: %v", err)
+	panic(err)
 }
 func (c *Config) getConf() *Config {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -193,7 +192,9 @@ func main() {
 		colors = append(colors, colorNRGBA)
 	}
 	modPath = cfg.ModPath
-	hoi4Path = cfg.Hoi4Path
+	hoi4Path = cfg.HoiPath
+	fmt.Printf("Path to game: %v\n", hoi4Path)
+	fmt.Printf("Path to mod: %v\n", modPath)
 	getModPaths(modPath, hoi4Path)
 	image_repeats = len(colors)
 
@@ -221,7 +222,7 @@ func main() {
 	// Parse state files.
 	err = parseStateFiles()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse states provinces.
@@ -241,18 +242,18 @@ func main() {
 	text := ""
 	// if strings.Contains(os.Args[:1], "debug") {
 	// 	fmt.Print("Debug Mode\n")
-	// 	text = "saveStatePngs generateStateMaps generateProvinceMaps generateTerrainMaps"
+	text = "saveStatePngs"
 	// } else {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print(`Enter maps to generate:
-		generateTerrainMaps
-		saveStatePngs
-		generateStateMaps
-		generateProvinceMaps
-		--------------------
+	// reader := bufio.NewReader(os.Stdin)
+	// fmt.Print(`Enter maps to generate:
+	// 	generateTerrainMaps
+	// 	saveStatePngs
+	// 	generateStateMaps
+	// 	generateProvinceMaps
+	// 	--------------------
 
-		`)
-	text, _ = reader.ReadString('\n')
+	// 	`)
+	// text, _ = reader.ReadString('\n')
 	// }
 	err = saveGeoData()
 	if err != nil {
@@ -377,7 +378,6 @@ func getModPaths(pathToInstall string, pathToHoi4 string) {
 	heightmapPath = pathToInstall + "/map/heightmap.bmp"
 	statesPath = pathToInstall + "/history/states"
 	strategicRegionPath = pathToInstall + "/map/strategicregions"
-	atlasPath = pathToHoi4 + "/map/atlas0.dds"
 }
 
 // ReadLines reads a whole file
@@ -758,12 +758,15 @@ func parseState(path string) (state State, err error) {
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
 	//fmt.Printf("Provinces: %v", provinces)
 	for _, p := range provinces {
-		pID, err := strconv.Atoi(p)
+		if len(p) > 0 {
+			pID, err := strconv.Atoi(p)
 
-		if err != nil {
-			return state, err
+			if err != nil {
+				fmt.Printf("Error in state: %v", state)
+				return state, err
+			}
+			state.Provinces[pID] = provincesIDMap[pID]
 		}
-		state.Provinces[pID] = provincesIDMap[pID]
 	}
 	state.Continent = -1
 	state.PixelCoordsMap = make(map[image.Point]bool)
@@ -928,7 +931,7 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 func parseStrategicRegionsProvinces() {
 	fmt.Printf("%s: Parsing provinces in each strategic region...\n", time.Since(startTime))
 	for _, r := range strategicRegionMap {
-		fmt.Printf("Finished: %v \n", r.ID)
+		//fmt.Printf("Finished: %v \n", r.ID)
 		for _, p := range r.Provinces {
 			// Fill in each strategic regions pixel coordinates.
 			for _, pc := range p.PixelCoords {
@@ -2451,7 +2454,21 @@ func createStatePngFiles() error {
 	return nil
 }
 func createStateBackdrop() error {
-	g := gift.New()
-
+	reader, err := os.Open(atlasPath)
+	if err != nil {
+		fmt.Print("Atlas Texture Missing")
+		processError(err)
+	}
+	defer reader.Close()
+	atlasImage, format, err := image.Decode(reader)
+	if err != nil {
+		processError(err)
+	}
+	fmt.Printf("Format of Atlas: %v", format)
+	writer, err := os.Create("/atlas_output.png")
+	if err != nil {
+		processError(err)
+	}
+	png.Encode(writer, atlasImage)
 	return nil
 }
