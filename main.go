@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/disintegration/gift"
 	"github.com/golang/freetype"
 	bmp "github.com/jsummers/gobmp"
 	"golang.org/x/image/draw"
@@ -30,6 +31,7 @@ import (
 
 var modPath = "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
 var configPath = "config.yml"
+var hoi4Path string
 
 // var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
@@ -39,6 +41,7 @@ var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var strategicRegionPath = modPath + "/map/strategicregions"
+var atlasPath = hoi4Path + "/map/atlas0.dds"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
@@ -53,6 +56,7 @@ var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
 var waterColor = color.RGBA{68, 107, 163, 255}
+var provinceTerrainImage image.RGBA
 var charWidth = 4
 var charHeight = 5
 var startTime time.Time
@@ -66,9 +70,9 @@ var image_repeats int = 5
 var colors = []color.NRGBA{}
 
 type Config struct {
-	ModPath       string `yaml:"modPath"`
-	Image_repeats int    `yaml:"image_repeats"`
-	Color         []struct {
+	ModPath  string `yaml:"modPath"`
+	Hoi4Path string `yaml: "hoi4Path"`
+	Color    []struct {
 		R uint8 `yaml:"r"`
 		G uint8 `yaml:"g"`
 		B uint8 `yaml:"b"`
@@ -78,7 +82,7 @@ type Config struct {
 
 var defaultConfig = `
 modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
-image_repeats: 3
+Hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
 
 colors:
   - color:
@@ -189,7 +193,8 @@ func main() {
 		colors = append(colors, colorNRGBA)
 	}
 	modPath = cfg.ModPath
-	getModPaths(modPath)
+	hoi4Path = cfg.Hoi4Path
+	getModPaths(modPath, hoi4Path)
 	image_repeats = len(colors)
 
 	// Parse  definition.csv for provinces.
@@ -253,18 +258,6 @@ func main() {
 	if err != nil {
 		processError(err)
 	}
-	if strings.Contains(text, "saveStatePngs") {
-		// Write the output file.
-		err = createStatePngFiles()
-		if err != nil {
-			processError(err)
-		}
-		err = createStateCenterPointsCSV()
-		if err != nil {
-			processError(err)
-		}
-
-	}
 	// // Generate state ID map.
 	if strings.Contains(text, "generateStateMaps") {
 		err = generateSateMap()
@@ -321,6 +314,21 @@ func main() {
 			panic(err)
 		}
 	}
+	if strings.Contains(text, "saveStatePngs") {
+		// Write the output file.
+		err = createStatePngFiles()
+		if err != nil {
+			processError(err)
+		}
+		err = createStateCenterPointsCSV()
+		if err != nil {
+			processError(err)
+		}
+		err = createStateBackdrop()
+		if err != nil {
+			processError(err)
+		}
+	}
 
 	// // Generate province-based terrain map.
 	// err = generateProvinceBasedTerrainMap()
@@ -361,7 +369,7 @@ func main() {
 		fmt.Scanln()
 	}
 }
-func getModPaths(pathToInstall string) {
+func getModPaths(pathToInstall string, pathToHoi4 string) {
 	definitionsPath = pathToInstall + "/map/definition.csv"
 	adjacenciesPath = pathToInstall + "/map/adjacencies.csv"
 	provincesPath = pathToInstall + "/map/provinces.bmp"
@@ -369,6 +377,7 @@ func getModPaths(pathToInstall string) {
 	heightmapPath = pathToInstall + "/map/heightmap.bmp"
 	statesPath = pathToInstall + "/history/states"
 	strategicRegionPath = pathToInstall + "/map/strategicregions"
+	atlasPath = pathToHoi4 + "/map/atlas0.dds"
 }
 
 // ReadLines reads a whole file
@@ -2438,6 +2447,11 @@ func createStatePngFiles() error {
 			log.Fatal(err)
 		}
 	}
+
+	return nil
+}
+func createStateBackdrop() error {
+	g := gift.New()
 
 	return nil
 }
