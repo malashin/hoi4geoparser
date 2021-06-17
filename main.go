@@ -55,7 +55,15 @@ var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
 var waterColor = color.RGBA{68, 107, 163, 255}
-var provinceTerrainImage image.RGBA
+var atlasTileSize = image.Rectangle{image.Point{0, 0}, image.Point{512, 512}}
+
+/// Offsets for each texture index
+var atlasTextureMap = []image.Point{
+	image.Pt(0, 0), image.Pt(512, 0), image.Pt(1024, 0), image.Pt(1536, 0),
+	image.Pt(0, 512), image.Pt(512, 512), image.Pt(1024, 512), image.Pt(1536, 512),
+	image.Pt(0, 1024), image.Pt(512, 1024), image.Pt(1024, 1024), image.Pt(1536, 1024),
+	image.Pt(0, 1536), image.Pt(512, 1536), image.Pt(1024, 1536), image.Pt(1536, 1536),
+}
 var charWidth = 4
 var charHeight = 5
 var startTime time.Time
@@ -149,6 +157,14 @@ type StrategicRegion struct {
 	CenterPoint    image.Point
 }
 
+var TerrainAtlas map[int]*TerrainType
+
+type TerrainType struct {
+	color         int
+	texture_index int
+	texture_img   image.Image
+}
+
 func processError(err error) {
 	fmt.Printf("Error: %v", err)
 	panic(err)
@@ -240,21 +256,21 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 	text := ""
-	// if strings.Contains(os.Args[:1], "debug") {
-	// 	fmt.Print("Debug Mode\n")
-	text = "saveStatePngs"
-	// } else {
-	// reader := bufio.NewReader(os.Stdin)
-	// fmt.Print(`Enter maps to generate:
-	// 	generateTerrainMaps
-	// 	saveStatePngs
-	// 	generateStateMaps
-	// 	generateProvinceMaps
-	// 	--------------------
+	if stringContains(os.Args[1:], "debug") {
+		fmt.Print("Debug Mode\n")
+		text = "saveStatePngs"
+	} else {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print(`Enter maps to generate:
+		generateTerrainMaps
+		saveStatePngs
+		generateStateMaps
+		generateProvinceMaps
+		--------------------
 
-	// 	`)
-	// text, _ = reader.ReadString('\n')
-	// }
+		`)
+		text, _ = reader.ReadString('\n')
+	}
 	err = saveGeoData()
 	if err != nil {
 		processError(err)
@@ -325,10 +341,15 @@ func main() {
 		if err != nil {
 			processError(err)
 		}
-		err = createStateBackdrop()
+		createDebugTerrainType()
+		err = parseTerrainTypes()
 		if err != nil {
 			processError(err)
 		}
+		// err = createStateBackdrop()
+		// if err != nil {
+		// 	processError(err)
+		// }
 	}
 
 	// // Generate province-based terrain map.
@@ -378,6 +399,15 @@ func getModPaths(pathToInstall string, pathToHoi4 string) {
 	heightmapPath = pathToInstall + "/map/heightmap.bmp"
 	statesPath = pathToInstall + "/history/states"
 	strategicRegionPath = pathToInstall + "/map/strategicregions"
+}
+
+func stringContains(s []string, e string) bool {
+	for _, a := range s {
+		if strings.Contains(a, e) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReadLines reads a whole file
@@ -885,7 +915,7 @@ func parseStrategicRegionFiles() error {
 	for _, r := range strategicRegionFiles {
 		strategicRegion, err := parseStrategicRegion(r)
 		if err != nil {
-			//fmt.Printf("Error in Region: %v", strategicRegion)
+			fmt.Printf("Error in Region: %v", strategicRegion)
 			return err
 		}
 		strategicRegionMap[strategicRegion.ID] = &strategicRegion
@@ -917,6 +947,7 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 		if len(p) > 0 {
 			pID, err := strconv.Atoi(p)
 			if err != nil {
+				fmt.Printf("%v had an error at %v", strategicRegion.ID, p)
 				return strategicRegion, err
 			}
 			strategicRegion.Provinces[pID] = provincesIDMap[pID]
@@ -932,6 +963,7 @@ func parseStrategicRegionsProvinces() {
 	fmt.Printf("%s: Parsing provinces in each strategic region...\n", time.Since(startTime))
 	for _, r := range strategicRegionMap {
 		//fmt.Printf("Finished: %v \n", r.ID)
+		//fmt.Printf("Provinces in %v: %v \n", r.ID, r.Provinces)
 		for _, p := range r.Provinces {
 			// Fill in each strategic regions pixel coordinates.
 			for _, pc := range p.PixelCoords {
@@ -2453,7 +2485,39 @@ func createStatePngFiles() error {
 
 	return nil
 }
-func createStateBackdrop() error {
+func createDebugTerrainType() {
+	var terrain TerrainType
+	terrain.color = 3
+	img, err := createTerrainImage(atlasTextureMap[1])
+	terrain.texture_img = img
+	terrain.texture_index = 0
+	if err != nil {
+		processError(err)
+	}
+}
+func parseTerrainTypes() error {
+	// Open terrain image
+	terrainFile, err := os.Open(filepath.FromSlash(terrainPath))
+	if err != nil {
+		return err
+	}
+	defer terrainFile.Close()
+	terrainImage, err := bmp.DecodeConfig(terrainFile)
+	if err != nil {
+		return err
+	}
+	terrainColors, ok := terrainImage.ColorModel.(color.Palette)
+	if ok {
+		fmt.Printf("BMP Color index 0: %v\n", terrainColors[0])
+	} else {
+		fmt.Print("Not a palette")
+	}
+	return nil
+}
+
+/// Input a point described in the atlasTextureMap, 0-15 > x,y
+func createTerrainImage(textureIndex image.Point) (image.Image, error) {
+	//Open Atlas
 	reader, err := os.Open(atlasPath)
 	if err != nil {
 		fmt.Print("Atlas Texture Missing")
@@ -2464,10 +2528,48 @@ func createStateBackdrop() error {
 	if err != nil {
 		processError(err)
 	}
+	//Pull tile from atlas
+	tileR := atlasTileSize.Add(textureIndex)
+	tileImg, err := cropImage(atlasImage, tileR)
+	// new image
+	atlasOverlay := image.NewNRGBA(provincesImageSize)
+	var atlasTileX int = int(math.Ceil(float64(provincesImageSize.Size().X) / float64(atlasTileSize.Size().X)))
+	var atlasTileY int = int(math.Ceil(float64(provincesImageSize.Size().Y) / float64(atlasTileSize.Size().Y)))
+	fmt.Printf("X size %v, Y size %v \n", atlasTileX, atlasTileY)
+	//drawPoint := image.Pt(0, 0)
+	r := tileImg.Bounds()
+	for x := 0; x < atlasTileX; x++ {
+		for y := 0; y < atlasTileY; y++ {
+			fmt.Println(r)
+			//drawPoint.Add(image.Pt(atlasTileSize.Size().X*x, atlasTileSize.Size().Y*y))
+			fmt.Printf("Drawing rectangle at %v moved by %v \n", r, atlasTileSize.Size())
+			draw.Draw(atlasOverlay, r, tileImg, image.Pt(0, 0), draw.Src)
+			// add across by atlas tile y
+			r = r.Add(image.Point{0, atlasTileSize.Size().Y})
+		}
+		// make a new rect starting at the old max, then add the tile size for new max, 0 out Y location
+		r = image.Rect(r.Max.X, 0, atlasTileSize.Max.X+r.Max.X, atlasTileSize.Max.Y)
+	}
+	// Write atlas output (DEBUG)
 	writer, err := os.Create("atlas_output.png")
 	if err != nil {
 		processError(err)
 	}
-	png.Encode(writer, atlasImage)
-	return nil
+	png.Encode(writer, atlasOverlay)
+	return atlasOverlay, nil
+}
+func cropImage(img image.Image, crop image.Rectangle) (image.Image, error) {
+	type subImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	// img is an Image interface. This checks if the underlying value has a
+	// method called SubImage. If it does, then we can use SubImage to crop the
+	// image.
+	simg, ok := img.(subImager)
+	if !ok {
+		return nil, fmt.Errorf("image does not support cropping")
+	}
+
+	return simg.SubImage(crop), nil
 }

@@ -1,6 +1,7 @@
-﻿modPath: "C:/Users/user/Documents/repos/mod/oldworldblues"
-hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
-
+﻿#modPath: "C:/Users/user/Documents/repos/mod/oldworldblues"
+#hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+modPath: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
+hoi4Path: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
 colors:
   - color:
     r: 255
