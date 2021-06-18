@@ -78,9 +78,11 @@ var alphaMaskImage []byte
 
 //var image_Size = 0.5
 var image_repeats int = 5
+var image_repeats_hash int = 3
 var colors = []color.NRGBA{}
-var hash_scale = 0.5
-var main_scale = 1.0
+var hash_colors = []color.NRGBA{}
+var hash_scale float64 = 1.0
+var main_scale float64 = 1.0
 
 type Config struct {
 	ModPath   string  `yaml:"modPath"`
@@ -93,6 +95,12 @@ type Config struct {
 		B uint8 `yaml:"b"`
 		A uint8 `yaml:"a"`
 	} `yaml:"colors"`
+	HashColor []struct {
+		R uint8 `yaml:"r"`
+		G uint8 `yaml:"g"`
+		B uint8 `yaml:"b"`
+		A uint8 `yaml:"a"`
+	} `yaml:"hashColors"`
 }
 
 var defaultConfig = `
@@ -111,6 +119,17 @@ colors:
     g: 130
     b: 10
     a: 180
+hashColors:
+	- color:
+	  r: 255
+	  g: 130
+	  b: 10
+	  a: 180
+	- color:
+	  r: 255
+	  g: 130
+	  b: 10
+	  a: 180
 `
 
 // Province represents an in-game province with all parsed data in it.
@@ -216,14 +235,25 @@ func main() {
 		colorNRGBA := color.NRGBA{c.R, c.G, c.B, c.A}
 		colors = append(colors, colorNRGBA)
 	}
+	for _, ch := range cfg.HashColor {
+		colorNRGBA := color.NRGBA{ch.R, ch.G, ch.B, ch.A}
+		hash_colors = append(hash_colors, colorNRGBA)
+	}
 	modPath = cfg.ModPath
 	hoi4Path = cfg.HoiPath
-	main_scale = cfg.MainScale
-	hash_scale = cfg.HashScale
+	if cfg.MainScale > 0.01 {
+		main_scale = cfg.MainScale
+	}
+	if cfg.HashScale > 0.01 {
+		hash_scale = cfg.HashScale
+	}
 	fmt.Printf("Path to game: %v\n", hoi4Path)
 	fmt.Printf("Path to mod: %v\n", modPath)
+	fmt.Printf("Hash Colors: %v\n", hash_colors)
+	fmt.Printf("Main Colors %v\n", colors)
 	getModPaths(modPath, hoi4Path)
 	image_repeats = len(colors)
+	image_repeats_hash = len(hash_colors)
 
 	// Parse  definition.csv for provinces.
 	err := parseDefinitions()
@@ -352,6 +382,11 @@ func main() {
 		if err != nil {
 			processError(err)
 		}
+
+		// ####################################################
+		// Disabled for this patch of the tool - Coming soon
+		// ####################################################
+
 		// createDebugTerrainType()
 		// err = parseTerrainTypes()
 		// if err != nil {
@@ -2401,12 +2436,10 @@ var spriteHeader = `spriteType = {
 	name = "GFX_custom_map_state_image_`
 var spriteTexture = `
 	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
-var spriteMaskTexture = `
-	textureFile2 = "gfx/interface/gui/custom_map_mode/state_images/state_mask.png"`
+var spriteTextureHashed = `
+	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_hashed_`
 var spriteFrames = `
 	noOfFrames = `
-var spirteEffect = `
-	effectFile = "gfx//FX//buttonstate.lua"`
 var spriteFooter = `
 	alwaystransparent = yes
 }
@@ -2460,7 +2493,12 @@ func createStatePngFiles() error {
 		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
 		img := image.NewRGBA(imgSize)
 		alphaCol := color.RGBA{0, 0, 0, 0}
-		draw.Draw(img, img.Bounds(), &image.Uniform{alphaCol}, image.ZP, draw.Src)
+		draw.Draw(img, img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
+		// We want the hash to start the same as the image
+		hashSize := image.Rect(xMin, yMin, (xMax + (image_repeats_hash-1)*(xRange+1)), yMax)
+		hash_img := image.NewRGBA(hashSize)
+		draw.Draw(hash_img, hash_img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
+		// Iterate through main images
 		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
 			offset_X := (xRange + 1) * tileNumber
 			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
@@ -2469,34 +2507,63 @@ func createStatePngFiles() error {
 				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
 			}
 		}
+		/// Iterate through hash images
+		for tileNumber := 0; tileNumber < image_repeats_hash; tileNumber++ {
+			offset_X := (xRange + 1) * tileNumber
+			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
+			//offset_Y := ()
+			for _, p := range s.PixelCoords {
+				hash_img.Set(p.X+offset_X, p.Y, hash_colors[tileNumber])
+			}
+		}
 		idString := fmt.Sprintf("%v", s.ID)
-		//fmt.Printf("Path: %s: \n", ("state_images/state_image" + idString + ".png"))
 		out, err := os.Create(("state_images/state_image_" + idString + ".png"))
 		if err != nil {
-			log.Fatal(err)
+			processError(err)
 		}
 		defer out.Close()
-		err = png.Encode(out, img)
+		//Disgusting type casting because i don't know how to do it otherwise
+		xScale_O := int(math.Round(float64(img.Bounds().Dx()) * main_scale))
+		YScale_O := int(math.Round(float64(img.Bounds().Dy()) * main_scale))
+		if main_scale != 1.0 {
+			scaledOriginal := image.NewNRGBA(image.Rect(0, 0, xScale_O, YScale_O))
+			draw.NearestNeighbor.Scale(scaledOriginal, scaledOriginal.Rect, img, img.Rect, draw.Over, nil)
+			err = png.Encode(out, scaledOriginal)
+		} else {
+			err = png.Encode(out, img)
+		}
 		if err != nil {
 			log.Fatal(err)
 		}
 		out.Close()
 		//Encode a scaled-down hashed version of the slices
-		scaled := image.NewNRGBA(image.Rect(0, 0, img.Bounds().Dx()/2, img.Bounds().Dy()/2))
-		draw.NearestNeighbor.Scale(scaled, scaled.Rect, img, img.Rect, draw.Over, nil)
-		fmt.Printf("Img bounds: %v, Scale Bounds: %v id: %v\n", img.Bounds(), scaled.Bounds(), s.ID)
+		xScale_H := int(math.Round(float64(hash_img.Bounds().Dx()) * hash_scale))
+		YScale_H := int(math.Round(float64(hash_img.Bounds().Dy()) * hash_scale))
+		scaledHash := image.NewNRGBA(image.Rect(0, 0, xScale_H, YScale_H))
+		//Decode packed mask
+		maskImg, err := png.Decode(bytes.NewReader(alphaMaskImage))
+		//maskImg := image.NewNRGBA(image.Rect(0, 0, 500, 500))
+		//draw.Draw(maskImg, maskImg.Rect, &image.Uniform{color.Opaque}, image.Pt(0, 0), draw.Src)
+		if err != nil {
+			processError(err)
+		}
+		//Apply mask image
+		dest_img := image.NewNRGBA(hash_img.Rect)
+		draw.DrawMask(dest_img, dest_img.Rect, hash_img, hash_img.Rect.Min, maskImg, image.Pt(0, 0), draw.Over)
+		draw.NearestNeighbor.Scale(scaledHash, scaledHash.Rect, dest_img, dest_img.Rect, draw.Over, nil)
 		scaleOut, err := os.Create(("state_images/state_image_hashed_" + idString + ".png"))
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer scaleOut.Close()
-		png.Encode(scaleOut, scaled)
+		png.Encode(scaleOut, scaledHash)
 		scaleOut.Close()
 		// create slice of file
 		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
-		fileSectionMask := spriteHeader + "masked_" + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteMaskTexture + spriteFrames + fmt.Sprintf("%v", image_repeats) + spirteEffect + spriteFooter
+		fileSectionHash := spriteHeader + "hashed_" + idString + "\"\n" + spriteTextureHashed + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats_hash) + spriteFooter
 		fileContents = append(fileContents, fileSection)
-		fileContents = append(fileContents, fileSectionMask)
+		fileContents = append(fileContents, fileSectionHash)
+		fmt.Printf("State %v finished!\n", s.ID)
 	}
 	fileContents = append(fileContents, "\n}")
 	f, err := os.Create("state_images/custom_states_generated_state_images.gfx")
@@ -2512,17 +2579,7 @@ func createStatePngFiles() error {
 		}
 	}
 	f.Close()
-	alphaMask, err := os.Create("state_images/state_mask.png")
-	if err != nil {
-		processError((err))
-	}
-	defer alphaMask.Close()
-	img, err := png.Decode(bytes.NewReader(alphaMaskImage))
-	if err != nil {
-		processError(err)
-	}
-	png.Encode(alphaMask, img)
-	alphaMask.Close()
+	fmt.Print("GFX file finished\n")
 	return nil
 }
 func createDebugTerrainType() {
