@@ -3,6 +3,7 @@ package main
 // MODIFIED TO OUTPUT STATE CENTERS AS A CSV
 import (
 	"bufio"
+	"bytes"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -71,6 +72,9 @@ var utf8bom = []byte{0xEF, 0xBB, 0xBF}
 
 //go:embed smallest_pixel-7.ttf
 var fontBytes []byte
+
+//go:embed alpha_mask.png
+var alphaMaskImage []byte
 
 //var image_Size = 0.5
 var image_repeats int = 5
@@ -256,7 +260,7 @@ func main() {
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
 	text := ""
-	if stringContains(os.Args[1:], "debug") {
+	if stringContains(os.Args, "debug") {
 		fmt.Print("Debug Mode\n")
 		text = "saveStatePngs"
 	} else {
@@ -341,11 +345,11 @@ func main() {
 		if err != nil {
 			processError(err)
 		}
-		createDebugTerrainType()
-		err = parseTerrainTypes()
-		if err != nil {
-			processError(err)
-		}
+		// createDebugTerrainType()
+		// err = parseTerrainTypes()
+		// if err != nil {
+		// 	processError(err)
+		// }
 		// err = createStateBackdrop()
 		// if err != nil {
 		// 	processError(err)
@@ -385,7 +389,7 @@ func main() {
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
-	if strings.Contains(os.Args[1], "debug") {
+	if stringContains(os.Args, "debug") {
 		fmt.Print("Debug Complete \n")
 	} else {
 		fmt.Scanln()
@@ -2390,8 +2394,12 @@ var spriteHeader = `spriteType = {
 	name = "GFX_custom_map_state_image_`
 var spriteTexture = `
 	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
+var spriteMaskTexture = `
+	textureFile2 = "gfx/interface/gui/custom_map_mode/state_images/state_mask.png"`
 var spriteFrames = `
 	noOfFrames = `
+var spirteEffect = `
+	effectFile = "gfx//FX//buttonstate.lua"`
 var spriteFooter = `
 	alwaystransparent = yes
 }
@@ -2466,11 +2474,12 @@ func createStatePngFiles() error {
 		}
 		// create slice of file
 		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
+		fileSectionMask := spriteHeader + "masked_" + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteMaskTexture + spriteFrames + fmt.Sprintf("%v", image_repeats) + spirteEffect + spriteFooter
 		fileContents = append(fileContents, fileSection)
+		fileContents = append(fileContents, fileSectionMask)
 	}
 	fileContents = append(fileContents, "\n}")
 	f, err := os.Create("state_images/custom_states_generated_state_images.gfx")
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -2482,7 +2491,18 @@ func createStatePngFiles() error {
 			log.Fatal(err)
 		}
 	}
-
+	f.Close()
+	alphaMask, err := os.Create("state_images/state_mask.png")
+	if err != nil {
+		processError((err))
+	}
+	defer alphaMask.Close()
+	img, err := png.Decode(bytes.NewReader(alphaMaskImage))
+	if err != nil {
+		processError(err)
+	}
+	png.Encode(alphaMask, img)
+	alphaMask.Close()
 	return nil
 }
 func createDebugTerrainType() {
