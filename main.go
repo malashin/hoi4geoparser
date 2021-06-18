@@ -79,11 +79,15 @@ var alphaMaskImage []byte
 //var image_Size = 0.5
 var image_repeats int = 5
 var colors = []color.NRGBA{}
+var hash_scale = 0.5
+var main_scale = 1.0
 
 type Config struct {
-	ModPath string `yaml:"modPath"`
-	HoiPath string `yaml:"hoi4Path"`
-	Color   []struct {
+	ModPath   string  `yaml:"modPath"`
+	HoiPath   string  `yaml:"hoi4Path"`
+	MainScale float64 `yaml:"mainScale"`
+	HashScale float64 `yaml:"hashScale"`
+	Color     []struct {
 		R uint8 `yaml:"r"`
 		G uint8 `yaml:"g"`
 		B uint8 `yaml:"b"`
@@ -94,7 +98,8 @@ type Config struct {
 var defaultConfig = `
 modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
 hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
-
+mainScale: 1.0
+hashScale: 1.0
 colors:
   - color:
     r: 255
@@ -213,6 +218,8 @@ func main() {
 	}
 	modPath = cfg.ModPath
 	hoi4Path = cfg.HoiPath
+	main_scale = cfg.MainScale
+	hash_scale = cfg.HashScale
 	fmt.Printf("Path to game: %v\n", hoi4Path)
 	fmt.Printf("Path to mod: %v\n", modPath)
 	getModPaths(modPath, hoi4Path)
@@ -2421,6 +2428,7 @@ func createStatePngFiles() error {
 	fileContents = append(fileContents, fileHeader)
 	// Loop!
 	fmt.Printf("%s: Generating State Images for %v states using %v colors\n", time.Since(startTime), len(statesMap), len(colors))
+	fmt.Printf("Iterating.....")
 	for _, s := range statesMap {
 		// Find largest dimension
 		var xMin int = s.PixelCoords[0].X
@@ -2472,6 +2480,18 @@ func createStatePngFiles() error {
 		if err != nil {
 			log.Fatal(err)
 		}
+		out.Close()
+		//Encode a scaled-down hashed version of the slices
+		scaled := image.NewNRGBA(image.Rect(0, 0, img.Bounds().Dx()/2, img.Bounds().Dy()/2))
+		draw.NearestNeighbor.Scale(scaled, scaled.Rect, img, img.Rect, draw.Over, nil)
+		fmt.Printf("Img bounds: %v, Scale Bounds: %v id: %v\n", img.Bounds(), scaled.Bounds(), s.ID)
+		scaleOut, err := os.Create(("state_images/state_image_hashed_" + idString + ".png"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer scaleOut.Close()
+		png.Encode(scaleOut, scaled)
+		scaleOut.Close()
 		// create slice of file
 		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
 		fileSectionMask := spriteHeader + "masked_" + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteMaskTexture + spriteFrames + fmt.Sprintf("%v", image_repeats) + spirteEffect + spriteFooter
