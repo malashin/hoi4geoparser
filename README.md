@@ -13,10 +13,8 @@ Used to generate image based terrain maps from hoi4 data. Originally written by 
 - Run the geoparser and input the maps to generate when prompted
 
 ### Add files for custom map modes to the mod
-- Copy the ``state_images`` folder into ``gfx/interface/custom_map_modes/`` in your mod
-- Copy the ``custom_states_generated_state_images.gfx`` in ``state_images`` into the ``/interface/`` folder your mod. 
-- Copy the ``state_centers_on_actions.txt`` into ``common/on_actions``
-
+- Copy the files from the mod into your mod
+- Drag the folders inside mod_path (found in the tool's directory) into your mod path. That's it!
 
 ____
 
