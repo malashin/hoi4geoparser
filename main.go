@@ -216,11 +216,11 @@ func (c *Config) getConf() *Config {
 	}
 	yamlFile, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		log.Printf("yamlFile.Get err   #%v ", err)
+		processError(err)
 	}
 	err = yaml.Unmarshal(yamlFile, c)
 	if err != nil {
-		log.Fatalf("Unmarshal: %v", err)
+		processError(err)
 	}
 
 	return c
@@ -449,16 +449,16 @@ func getModPaths(pathToInstall string, pathToHoi4 string) {
 }
 
 func checkPath(path string, pathToInstall string, pathToHoi4 string) string {
-	path = pathToInstall + path
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		path = pathToHoi4 + path
-		fmt.Printf("Mod version of %v not found, utilizing %v", path, (pathToHoi4 + path))
+	fullPath := pathToInstall + path
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		fullPath = pathToHoi4 + path
+		fmt.Printf("Mod version of %v not found, utilizing %v \n", path, fullPath)
 	}
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Printf("Could not find %v Exiting", path)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		fmt.Printf("Could not find %v Exiting \n", fullPath)
 		processError(err)
 	}
-	return path
+	return fullPath
 }
 
 func stringContains(s []string, e string) bool {
@@ -475,13 +475,11 @@ func stringContains(s []string, e string) bool {
 func readLines(path string) ([]string, error) {
 	_, err := os.Stat(path)
 	if err != nil {
-		fmt.Printf("File not found: %v", path)
-		fmt.Scanln()
-		return nil, err
+		processError(err)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		processError(err)
 	}
 	defer file.Close()
 
