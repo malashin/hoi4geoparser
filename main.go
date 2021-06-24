@@ -41,6 +41,8 @@ var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var strategicRegionPath = modPath + "/map/strategicregions"
+var localModFilesPath = "./mod_path/"
+var gfxFilePath = localModFilesPath + "gfx/interface/gui/custom_map_mode"
 var atlasPath = "atlas0.png"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
@@ -75,6 +77,9 @@ var fontBytes []byte
 
 //go:embed alpha_mask.png
 var alphaMaskImage []byte
+
+//go:embed vanilla_terrain.png
+var vanilla_terrain_file []byte
 
 //var image_Size = 0.5
 var image_repeats int = 5
@@ -120,16 +125,16 @@ colors:
     b: 10
     a: 180
 hashColors:
-	- color:
-	  r: 255
-	  g: 130
-	  b: 10
-	  a: 180
-	- color:
-	  r: 255
-	  g: 130
-	  b: 10
-	  a: 180
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180
+  - color:
+    r: 255
+    g: 130
+    b: 10
+    a: 180
 `
 
 // Province represents an in-game province with all parsed data in it.
@@ -265,13 +270,13 @@ func main() {
 	// Parse  adjacencies.csv for province connections and impassable borders.
 	err = parseAdjacencies()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse provinces.bmp for province adjacency.
 	err = parseProvinces()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Find the center points of each province.
@@ -2399,7 +2404,16 @@ var csvFileContents []string
 
 func createStateCenterPointsCSV() error {
 	fmt.Printf("%s: Generating CSV output for state centers...\n", time.Since(startTime))
-	f, err := os.Create("state_centers_on_actions.txt")
+	local_path := localModFilesPath + "/common/on_actions"
+	_, err := os.Stat(local_path)
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll(local_path, 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	f, err := os.Create(local_path + "/state_centers_on_actions.txt")
 	defer f.Close()
 	if err != nil {
 		log.Fatalln("failed to open file", err)
@@ -2460,11 +2474,11 @@ var spriteFooter = `
 
 func createStatePngFiles() error {
 	fmt.Printf("%s: Creating state images! \n", time.Since(startTime))
-
+	local_path := gfxFilePath + "/state_images"
 	// Set up folder
-	_, err := os.Stat("state_images")
+	_, err := os.Stat(local_path)
 	if os.IsNotExist(err) {
-		errDir := os.MkdirAll("state_images", 0755)
+		errDir := os.MkdirAll(local_path, 0755)
 		if errDir != nil {
 			log.Fatal(err)
 		}
@@ -2529,7 +2543,7 @@ func createStatePngFiles() error {
 			}
 		}
 		idString := fmt.Sprintf("%v", s.ID)
-		out, err := os.Create(("state_images/state_image_" + idString + ".png"))
+		out, err := os.Create((local_path + "/state_image_" + idString + ".png"))
 		if err != nil {
 			processError(err)
 		}
@@ -2563,7 +2577,7 @@ func createStatePngFiles() error {
 		dest_img := image.NewNRGBA(hash_img.Rect)
 		draw.DrawMask(dest_img, dest_img.Rect, hash_img, hash_img.Rect.Min, maskImg, image.Pt(0, 0), draw.Over)
 		draw.NearestNeighbor.Scale(scaledHash, scaledHash.Rect, dest_img, dest_img.Rect, draw.Over, nil)
-		scaleOut, err := os.Create(("state_images/state_image_hashed_" + idString + ".png"))
+		scaleOut, err := os.Create((local_path + "/state_image_hashed_" + idString + ".png"))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -2578,7 +2592,17 @@ func createStatePngFiles() error {
 		fmt.Printf("State %v finished!\n", s.ID)
 	}
 	fileContents = append(fileContents, "\n}")
-	f, err := os.Create("state_images/custom_states_generated_state_images.gfx")
+	local_path = localModFilesPath + "/intereface"
+	// Set up folder
+	_, err = os.Stat(local_path)
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll(local_path, 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	f, err := os.Create(local_path + "/custom_states_generated_state_images.gfx")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -2592,6 +2616,13 @@ func createStatePngFiles() error {
 	}
 	f.Close()
 	fmt.Print("GFX file finished\n")
+	vanillaImage, _ := png.Decode(bytes.NewReader(vanilla_terrain_file))
+	vanillaFile, err := os.Create(gfxFilePath + "/big_map_bg.png")
+	if err != nil {
+		processError(err)
+	}
+	png.Encode(vanillaFile, vanillaImage)
+	fmt.Print("Vanilla Background Saved\n")
 	return nil
 }
 func createDebugTerrainType() {

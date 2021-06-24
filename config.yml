@@ -1,48 +1,28 @@
-﻿modPath: "C:/Users/user/Documents/repos/mod/test_map_files"
-hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
-#modPath: "E:/Paradox/mod/oldworldblues"
-#hoi4Path: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
+﻿#modPath: "C:/Users/user/Documents/repos/mod/test_map_files"
+#hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+modPath: "E:/Paradox/mod/test_map_file"
+hoi4Path: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
 mainScale: 1.0
-hashScale: 0.5
+hashScale: 1.0
 colors:
   - color:
-    r: 24
-    g: 255
-    b: 214
-    a: 55
-  - color:
-    r: 135
-    g: 216
-    b: 148
-    a: 55
-  - color:
-    r: 226
-    g: 156
-    b: 22
-    a: 55
-  - color:
-    r: 34
-    g: 69
-    b: 255
-    a: 55
+    r: 255
+    g: 130
+    b: 10
+    a: 180
   - color:
     r: 255
-    g: 34
-    b: 238
-    a: 55
+    g: 130
+    b: 10
+    a: 180
 hashColors:
   - color:
-    r: 106
-    g: 228
-    b: 3
-    a: 255
+    r: 255
+    g: 130
+    b: 10
+    a: 180
   - color:
     r: 255
-    g: 245
-    b: 34
-    a: 255
-  - color:
-    r: 255
-    g: 34
-    b: 34
-    a: 255
+    g: 130
+    b: 10
+    a: 180
