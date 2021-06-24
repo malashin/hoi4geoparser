@@ -305,12 +305,12 @@ func main() {
 	text := ""
 	if stringContains(os.Args, "debug") {
 		fmt.Print("Debug Mode\n")
-		text = "saveStatePngs"
+		text = "createCustomMapFiles"
 	} else {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print(`Enter maps to generate:
 		generateTerrainMaps
-		saveStatePngs
+		createCustomMapFiles
 		generateStateMaps
 		generateProvinceMaps
 		--------------------
@@ -378,7 +378,7 @@ func main() {
 			panic(err)
 		}
 	}
-	if strings.Contains(text, "saveStatePngs") {
+	if strings.Contains(text, "createCustomMapFiles") {
 		// Write the output file.
 		err = createStatePngFiles()
 		if err != nil {
