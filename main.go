@@ -195,6 +195,7 @@ type TerrainType struct {
 
 func processError(err error) {
 	fmt.Printf("Error: %v", err)
+	fmt.Scanln()
 	panic(err)
 }
 func (c *Config) getConf() *Config {
@@ -438,13 +439,26 @@ func main() {
 	}
 }
 func getModPaths(pathToInstall string, pathToHoi4 string) {
-	definitionsPath = pathToInstall + "/map/definition.csv"
-	adjacenciesPath = pathToInstall + "/map/adjacencies.csv"
-	provincesPath = pathToInstall + "/map/provinces.bmp"
-	terrainPath = pathToInstall + "/map/terrain.bmp"
-	heightmapPath = pathToInstall + "/map/heightmap.bmp"
-	statesPath = pathToInstall + "/history/states"
-	strategicRegionPath = pathToInstall + "/map/strategicregions"
+	definitionsPath = checkPath("/map/definition.csv", pathToInstall, pathToHoi4)
+	adjacenciesPath = checkPath("/map/adjacencies.csv", pathToInstall, pathToHoi4)
+	provincesPath = checkPath("/map/provinces.bmp", pathToInstall, pathToHoi4)
+	terrainPath = checkPath("/map/terrain.bmp", pathToInstall, pathToHoi4)
+	heightmapPath = checkPath("/map/heightmap.bmp", pathToInstall, pathToHoi4)
+	statesPath = checkPath("/history/states", pathToInstall, pathToHoi4)
+	strategicRegionPath = checkPath("/map/strategicregions", pathToInstall, pathToHoi4)
+}
+
+func checkPath(path string, pathToInstall string, pathToHoi4 string) string {
+	path = pathToInstall + path
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		path = pathToHoi4 + path
+		fmt.Printf("Mod version of %v not found, utilizing %v", path, (pathToHoi4 + path))
+	}
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Printf("Could not find %v Exiting", path)
+		processError(err)
+	}
+	return path
 }
 
 func stringContains(s []string, e string) bool {
