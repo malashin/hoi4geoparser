@@ -2554,6 +2554,23 @@ func createStatePngFiles() error {
 			//offset_Y := ()
 			for _, p := range s.PixelCoords {
 				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
+				/// Set up borders
+				_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
 			}
 		}
 		/// Iterate through hash images
