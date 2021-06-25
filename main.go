@@ -115,26 +115,46 @@ mainScale: 1.0
 hashScale: 1.0
 colors:
   - color:
-    r: 255
-    g: 130
-    b: 10
-    a: 180
+    r: 24
+    g: 255
+    b: 214
+    a: 55
+  - color:
+    r: 135
+    g: 216
+    b: 148
+    a: 55
+  - color:
+    r: 226
+    g: 156
+    b: 22
+    a: 55
+  - color:
+    r: 34
+    g: 69
+    b: 255
+    a: 55
   - color:
     r: 255
-    g: 130
-    b: 10
-    a: 180
+    g: 34
+    b: 238
+    a: 55
 hashColors:
   - color:
-    r: 255
-    g: 130
-    b: 10
-    a: 180
+    r: 106
+    g: 228
+    b: 3
+    a: 255
   - color:
     r: 255
-    g: 130
-    b: 10
-    a: 180
+    g: 245
+    b: 34
+    a: 255
+  - color:
+    r: 255
+    g: 34
+    b: 34
+    a: 255
 `
 
 // Province represents an in-game province with all parsed data in it.
