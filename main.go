@@ -2592,7 +2592,7 @@ func createStatePngFiles() error {
 		fmt.Printf("State %v finished!\n", s.ID)
 	}
 	fileContents = append(fileContents, "\n}")
-	local_path = localModFilesPath + "/intereface"
+	local_path = localModFilesPath + "/interface"
 	// Set up folder
 	_, err = os.Stat(local_path)
 	if os.IsNotExist(err) {
