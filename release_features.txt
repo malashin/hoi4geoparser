@@ -1,0 +1,14 @@
+https://steamcommunity.com/sharedfiles/filedetails/?id=2520632809
+
+My new tool is ready and relatively bug free! Hoi4 Custom Map Modes utility allows the creation of script-based dynamic mapmodes. This mod is an example file for vanilla showing implimentation of various features.
+Features:
+- Generate custom map modes for **ANY** map configuration. Tool link included on steam page
+- Easy to use. Adding a filter requires one scripted effect, one localization key, and adding to a global filter on game start
+- Display any data (variables, flags, etc.) that can be pulled from state scopes (includes country data from OWNER or CONTROLLER)
+- Hide states, show information text, display country-flag shields and more with a variety of state-flag-based configuration options per filter (See reference in tool readme)
+- Button and tooltip support for both hashed and solid state icons
+- Includes graph-based map country coloring
+- Chose to use solid or hashed state icons, individually or combined!
+- Create any number of RGBA colors for both hashed and solid icons 
+- Pick the resolution of your images to manage file size
+- All nessesary files generated in a skeleton, simply drag and drop generated mod_path into your mod

@@ -2462,12 +2462,15 @@ var spriteHeader = `spriteType = {
 	name = "GFX_custom_map_state_image_`
 var spriteTexture = `
 	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
+var spriteEffect = `
+	effectFile = "gfx/FX/stateshape.lua"
+`
 var spriteTextureHashed = `
 	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_hashed_`
 var spriteFrames = `
 	noOfFrames = `
 var spriteFooter = `
-	alwaystransparent = yes
+	transparencecheck = yes
 }
 
 `
@@ -2585,8 +2588,8 @@ func createStatePngFiles() error {
 		png.Encode(scaleOut, scaledHash)
 		scaleOut.Close()
 		// create slice of file
-		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
-		fileSectionHash := spriteHeader + "hashed_" + idString + "\"\n" + spriteTextureHashed + idString + ".png\"" + spriteFrames + fmt.Sprintf("%v", image_repeats_hash) + spriteFooter
+		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteEffect + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
+		fileSectionHash := spriteHeader + "hashed_" + idString + "\"\n" + spriteTextureHashed + idString + ".png\"" + spriteEffect + spriteFrames + fmt.Sprintf("%v", image_repeats_hash) + spriteFooter
 		fileContents = append(fileContents, fileSection)
 		fileContents = append(fileContents, fileSectionHash)
 		fmt.Printf("State %v finished!\n", s.ID)
