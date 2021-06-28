@@ -48,6 +48,7 @@ custom_map_mode_filter_click_[YOUR FILTER INDEX] = {
 		}
 	}
 }
+[/code]
 This example creates a color-graph for countries making sure no two bordering nations share a color. If you click on a state, it will nuke a random province!
 
 Function Reference:
