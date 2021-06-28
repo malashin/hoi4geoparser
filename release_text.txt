@@ -1,0 +1,27 @@
+Hello Coop! I would like to share my tool now ready for mainstream use:
+
+Custom Map Mode Utilities
+
+Create dynamic mapmodes quickly and easily with this free-use mod and bundled tool. Utilize as many colors as you want, two styles of overlay, buttons, tooltips, and more!
+
+Features:
+```
+- Supports easy implementation with a single effect and filter name string
+- Allows generation of any number of colors to use for mapmodes!
+- Easy configuration options and portable .exe
+- Supports country shields and country-level coloring
+- Add tertiary text to states on the map with a simple flag and text string
+- Hashed state overlays to display 2 types of data at once
+- Supported scaling of state images to save memory and mod size
+- Create button effects that run in state scope
+- Add tooltips to states in state scope
+- Disable/grey buttons when not needed
+```
+
+Find a quick-start guide on the steam page, a more in-depth guide is coming soon!
+
+Images: https://imgur.com/a/4bfbIR0
+
+Steam: https://steamcommunity.com/sharedfiles/filedetails/?id=2520632809
+
+Github: https://github.com/ICodeMaster/hoi4geoparser
