@@ -2510,6 +2510,22 @@ func createStatePngFiles() error {
 	fileContents = append(fileContents, fileHeader)
 	// Loop!
 	fmt.Printf("%s: Generating State Images for %v states using %v colors\n", time.Since(startTime), len(statesMap), len(colors))
+	// We want to tile the mask to the size of our image
+	maskImgSlice, err := png.Decode(bytes.NewReader(alphaMaskImage))
+	if err != nil {
+		processError(err)
+	}
+	maskImgSize := image.Rect(0, 0, provincesImageSize.Dx(), provincesImageSize.Dy())
+	maskImg := image.NewRGBA(maskImgSize)
+	tile_x := provincesImageSize.Max.X / maskImgSlice.Bounds().Max.X
+	tile_y := provincesImageSize.Max.Y / maskImgSlice.Bounds().Max.Y
+	for tile := 0; tile < tile_x; tile++ {
+		offsetX := tile * maskImgSlice.Bounds().Max.X
+		for tileH := 0; tileH < tile_y; tileH++ {
+			offsetY := tileH * maskImgSlice.Bounds().Max.Y
+			draw.Draw(maskImg, image.Rect(offsetX, offsetY, offsetX+maskImgSlice.Bounds().Dx(), offsetY+maskImgSlice.Bounds().Dy()), maskImgSlice, image.Pt(0, 0), draw.Src)
+		}
+	}
 	fmt.Printf("Iterating.....")
 	for _, s := range statesMap {
 		// Find largest dimension
@@ -2536,7 +2552,7 @@ func createStatePngFiles() error {
 		//imgHieght := yMax - yMin
 
 		// add 2x more space onto the end to create a strip
-		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+1)), yMax)
+		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+2)), yMax)
 		widthX := (xMax - xMin) / 2
 		heightY := (yMax - yMin) / 2
 		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
@@ -2549,7 +2565,7 @@ func createStatePngFiles() error {
 		draw.Draw(hash_img, hash_img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
 		// Iterate through main images
 		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
-			offset_X := (xRange + 1) * tileNumber
+			offset_X := (xRange + 2) * tileNumber
 			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
 			//offset_Y := ()
 			for _, p := range s.PixelCoords {
@@ -2607,12 +2623,9 @@ func createStatePngFiles() error {
 		YScale_H := int(math.Round(float64(hash_img.Bounds().Dy()) * hash_scale))
 		scaledHash := image.NewNRGBA(image.Rect(0, 0, xScale_H, YScale_H))
 		//Decode packed mask
-		maskImg, err := png.Decode(bytes.NewReader(alphaMaskImage))
 		//maskImg := image.NewNRGBA(image.Rect(0, 0, 500, 500))
 		//draw.Draw(maskImg, maskImg.Rect, &image.Uniform{color.Opaque}, image.Pt(0, 0), draw.Src)
-		if err != nil {
-			processError(err)
-		}
+
 		//Apply mask image
 		dest_img := image.NewNRGBA(hash_img.Rect)
 		draw.DrawMask(dest_img, dest_img.Rect, hash_img, hash_img.Rect.Min, maskImg, image.Pt(0, 0), draw.Over)
