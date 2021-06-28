@@ -2520,9 +2520,9 @@ func createStatePngFiles() error {
 	tile_x := provincesImageSize.Max.X / maskImgSlice.Bounds().Max.X
 	tile_y := provincesImageSize.Max.Y / maskImgSlice.Bounds().Max.Y
 	for tile := 0; tile < tile_x; tile++ {
-		offsetX := tile * maskImgSlice.Bounds().Max.X
+		offsetX := (tile * maskImgSlice.Bounds().Max.X) + 1
 		for tileH := 0; tileH < tile_y; tileH++ {
-			offsetY := tileH * maskImgSlice.Bounds().Max.Y
+			offsetY := (tileH * maskImgSlice.Bounds().Max.Y) + 1
 			draw.Draw(maskImg, image.Rect(offsetX, offsetY, offsetX+maskImgSlice.Bounds().Dx(), offsetY+maskImgSlice.Bounds().Dy()), maskImgSlice, image.Pt(0, 0), draw.Src)
 		}
 	}
@@ -2629,6 +2629,8 @@ func createStatePngFiles() error {
 		//Apply mask image
 		dest_img := image.NewNRGBA(hash_img.Rect)
 		draw.DrawMask(dest_img, dest_img.Rect, hash_img, hash_img.Rect.Min, maskImg, image.Pt(0, 0), draw.Over)
+		//Testing mask
+		//draw.Draw(dest_img, dest_img.Rect, maskImg, hash_img.Rect.Min, draw.Over)
 		draw.NearestNeighbor.Scale(scaledHash, scaledHash.Rect, dest_img, dest_img.Rect, draw.Over, nil)
 		scaleOut, err := os.Create((local_path + "/state_image_hashed_" + idString + ".png"))
 		if err != nil {
