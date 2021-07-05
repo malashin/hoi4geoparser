@@ -2526,7 +2526,7 @@ func createStatePngFiles() error {
 			draw.Draw(maskImg, image.Rect(offsetX, offsetY, offsetX+maskImgSlice.Bounds().Dx(), offsetY+maskImgSlice.Bounds().Dy()), maskImgSlice, image.Pt(0, 0), draw.Src)
 		}
 	}
-	fmt.Printf("Iterating.....")
+	fmt.Printf("Iterating.....\n")
 	for _, s := range statesMap {
 		// Find largest dimension
 		var xMin int = s.PixelCoords[0].X
@@ -2566,27 +2566,25 @@ func createStatePngFiles() error {
 		// Iterate through main images
 		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
 			offset_X := (xRange + 1) * tileNumber
-			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
-			//offset_Y := ()
 			for _, p := range s.PixelCoords {
 				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
-				/// Set up borders
-				// _, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
-				// if !exists {
-				// 	img.Set(p.X+offset_X, p.Y, color.Black)
-				// }
-				// _, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
-				// if !exists {
-				// 	img.Set(p.X+offset_X, p.Y, color.Black)
-				// }
-				// _, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
-				// if !exists {
-				// 	img.Set(p.X+offset_X, p.Y, color.Black)
-				// }
-				// _, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
-				// if !exists {
-				// 	img.Set(p.X+offset_X, p.Y, color.Black)
-				// }
+				// Set up borders
+				_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
 			}
 		}
 		/// Iterate through hash images
