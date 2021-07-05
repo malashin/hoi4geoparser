@@ -2552,9 +2552,9 @@ func createStatePngFiles() error {
 		//imgHieght := yMax - yMin
 
 		// add 2x more space onto the end to create a strip
-		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+2)), yMax)
-		widthX := (xMax - xMin) / 2
-		heightY := (yMax - yMin) / 2
+		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+1) + 1), yMax+1)
+		widthX := (xRange + 1) / 2
+		heightY := (yMax - yMin + 1) / 2
 		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
 		img := image.NewRGBA(imgSize)
 		alphaCol := color.RGBA{0, 0, 0, 0}
@@ -2565,28 +2565,28 @@ func createStatePngFiles() error {
 		draw.Draw(hash_img, hash_img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
 		// Iterate through main images
 		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
-			offset_X := (xRange + 2) * tileNumber
+			offset_X := (xRange + 1) * tileNumber
 			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
 			//offset_Y := ()
 			for _, p := range s.PixelCoords {
 				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
 				/// Set up borders
-				_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
-				if !exists {
-					img.Set(p.X+offset_X, p.Y, color.Black)
-				}
-				_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
-				if !exists {
-					img.Set(p.X+offset_X, p.Y, color.Black)
-				}
-				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
-				if !exists {
-					img.Set(p.X+offset_X, p.Y, color.Black)
-				}
-				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
-				if !exists {
-					img.Set(p.X+offset_X, p.Y, color.Black)
-				}
+				// _, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+				// if !exists {
+				// 	img.Set(p.X+offset_X, p.Y, color.Black)
+				// }
+				// _, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+				// if !exists {
+				// 	img.Set(p.X+offset_X, p.Y, color.Black)
+				// }
+				// _, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+				// if !exists {
+				// 	img.Set(p.X+offset_X, p.Y, color.Black)
+				// }
+				// _, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+				// if !exists {
+				// 	img.Set(p.X+offset_X, p.Y, color.Black)
+				// }
 			}
 		}
 		/// Iterate through hash images
