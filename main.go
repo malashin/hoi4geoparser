@@ -2548,20 +2548,6 @@ func createStatePngFiles() error {
 			}
 		}
 		xRange := xMax - xMin
-		//This state loops and is probably broken
-		if float64(xRange) > (float64(provincesImageSize.Dx()) / 1.3) {
-			var offsetPixels []image.Point
-			for index, c := range s.PixelCoords {
-				newCoord := image.Point{c.X - provincesImageSize.Max.X/2, c.Y - provincesImageSize.Max.Y/2}
-				if newCoord.X < 0 {
-					offsetPixels[index] = newCoord
-				} else {
-					offsetPixels[index] = c
-				}
-			}
-		}
-		//imgWidth := xMax - xMin
-		//imgHieght := yMax - yMin
 
 		// add 2x more space onto the end to create a strip
 		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+1) + 1), yMax+1)
