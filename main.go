@@ -281,7 +281,7 @@ func main() {
 	fmt.Printf("Path to game: %v\n", hoi4Path)
 	fmt.Printf("Path to mod: %v\n", modPath)
 	if readVanillaStates {
-		fmt.Print("Utilizing vanilla history files when missing states")
+		fmt.Print("Utilizing vanilla history files when missing states\n")
 	}
 	fmt.Printf("Hash Colors: %v\n", hash_colors)
 	fmt.Printf("Main Colors %v\n", colors)
@@ -841,6 +841,7 @@ func parseStateFiles() error {
 		}
 	}
 	if readVanillaStates {
+		fmt.Print("Reading vanilla histoy\n")
 		stateFiles, err = filepath.Glob(filepath.FromSlash(hoi4Path+"/history/states") + string(os.PathSeparator) + "*.txt")
 		if err != nil {
 			return err
