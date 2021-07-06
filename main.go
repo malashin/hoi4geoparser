@@ -855,6 +855,7 @@ func parseStateFiles() error {
 			} else {
 				// if not in map, add this state to the map
 				if _, ok := statesMap[state.ID]; !ok {
+					fmt.Printf("Adding state from vanilla: %v\n", state.ID)
 					statesMap[state.ID] = &state
 				} else {
 					fmt.Printf("Duplicate state file found in vanilla: %v\n", state.ID)
