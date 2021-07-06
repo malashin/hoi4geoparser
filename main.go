@@ -88,13 +88,15 @@ var colors = []color.NRGBA{}
 var hash_colors = []color.NRGBA{}
 var hash_scale float64 = 1.0
 var main_scale float64 = 1.0
+var readVanillaStates bool = false
 
 type Config struct {
-	ModPath   string  `yaml:"modPath"`
-	HoiPath   string  `yaml:"hoi4Path"`
-	MainScale float64 `yaml:"mainScale"`
-	HashScale float64 `yaml:"hashScale"`
-	Color     []struct {
+	ModPath           string  `yaml:"modPath"`
+	HoiPath           string  `yaml:"hoi4Path"`
+	MainScale         float64 `yaml:"mainScale"`
+	HashScale         float64 `yaml:"hashScale"`
+	ReadVanillaStates bool    `yaml:"readVanillaStates"`
+	Color             []struct {
 		R uint8 `yaml:"r"`
 		G uint8 `yaml:"g"`
 		B uint8 `yaml:"b"`
@@ -113,6 +115,7 @@ modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
 hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
 mainScale: 1.0
 hashScale: 1.0
+readVanillaStates: false
 colors:
   - color:
     r: 24
@@ -267,6 +270,7 @@ func main() {
 	}
 	modPath = cfg.ModPath
 	hoi4Path = cfg.HoiPath
+	readVanillaStates = cfg.ReadVanillaStates
 	if cfg.MainScale > 0.01 {
 		main_scale = cfg.MainScale
 	}
@@ -275,6 +279,9 @@ func main() {
 	}
 	fmt.Printf("Path to game: %v\n", hoi4Path)
 	fmt.Printf("Path to mod: %v\n", modPath)
+	if readVanillaStates {
+		fmt.Print("Utilizing vanilla history files when missing states")
+	}
 	fmt.Printf("Hash Colors: %v\n", hash_colors)
 	fmt.Printf("Main Colors %v\n", colors)
 	getModPaths(modPath, hoi4Path)
@@ -824,6 +831,23 @@ func parseStateFiles() error {
 			return err
 		}
 		statesMap[state.ID] = &state
+	}
+	if readVanillaStates {
+		stateFiles, err = filepath.Glob(filepath.FromSlash(hoi4Path+"/history/states") + string(os.PathSeparator) + "*.txt")
+		if err != nil {
+			return err
+		}
+		//Iterate through vanilla states
+		for _, s := range stateFiles {
+			state, err := parseState(s)
+			if err != nil {
+				return err
+			}
+			// if not in map, add this state to the map
+			if _, ok := statesMap[state.ID]; !ok {
+				statesMap[state.ID] = &state
+			}
+		}
 	}
 	return nil
 }

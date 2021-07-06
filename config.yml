@@ -4,6 +4,7 @@ modPath: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
 hoi4Path: "E:/SteamLibraryE/steamapps/common/Hearts of Iron IV"
 mainScale: 1.0
 hashScale: 1.0
+readVanillaStates: false
 colors:
   - color:
     r: 24
