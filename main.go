@@ -48,6 +48,7 @@ var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
 var strategicRegionMap = make(map[int]*StrategicRegion)
+var rComment = regexp.MustCompile(`(#.*)`)
 var rStateID = regexp.MustCompile(`(?:id[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateName = regexp.MustCompile(`(?:name[ \n\t]*?=[ \n\t]*?\"(.+?)\")`)
 var rStateManpower = regexp.MustCompile(`(?:manpower[ \n\t]*?=[ \n\t]*?(\d+))`)
@@ -553,7 +554,7 @@ func parseDefinitions() error {
 func parseDefinitionsProvince(s string) (p Province, err error) {
 	pStrings := strings.Split(s, ";")
 	if len(pStrings) != 8 {
-		return p, errors.New("\"" + definitionsPath + "\": " + s + ": must contain 8 fields")
+		return p, errors.New("\"" + definitionsPath + "\": " + s + ": must contain 8 fields :: id:")
 	}
 
 	p.ID, err = strconv.Atoi(pStrings[0])
@@ -827,10 +828,17 @@ func parseStateFiles() error {
 	}
 	for _, s := range stateFiles {
 		state, err := parseState(s)
-		if err != nil {
+		if errors.Is(err, errStateEmptyError) {
+			fmt.Printf("State is empty, skipping %v \n", s)
+		} else if err != nil {
 			return err
+		} else {
+			if _, ok := statesMap[state.ID]; !ok {
+				statesMap[state.ID] = &state
+			} else {
+				fmt.Printf("Duplicate state file found: %v\n", state.ID)
+			}
 		}
-		statesMap[state.ID] = &state
 	}
 	if readVanillaStates {
 		stateFiles, err = filepath.Glob(filepath.FromSlash(hoi4Path+"/history/states") + string(os.PathSeparator) + "*.txt")
@@ -840,17 +848,24 @@ func parseStateFiles() error {
 		//Iterate through vanilla states
 		for _, s := range stateFiles {
 			state, err := parseState(s)
-			if err != nil {
+			if errors.Is(err, errStateEmptyError) {
+				fmt.Printf("State is empty, skipping %v \n", s)
+			} else if err != nil {
 				return err
-			}
-			// if not in map, add this state to the map
-			if _, ok := statesMap[state.ID]; !ok {
-				statesMap[state.ID] = &state
+			} else {
+				// if not in map, add this state to the map
+				if _, ok := statesMap[state.ID]; !ok {
+					statesMap[state.ID] = &state
+				} else {
+					fmt.Printf("Duplicate state file found in vanilla: %v\n", state.ID)
+				}
 			}
 		}
 	}
 	return nil
 }
+
+var errStateEmptyError = errors.New("state empty")
 
 func parseState(path string) (state State, err error) {
 	b, err := ioutil.ReadFile(path)
@@ -858,7 +873,12 @@ func parseState(path string) (state State, err error) {
 		return state, err
 	}
 	s := strings.Replace(string(b), "\r\n", "\n", -1)
-	state.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
+	s = rComment.ReplaceAllLiteralString(s, "")
+	if strings.TrimSpace(s) == "" {
+		return state, errStateEmptyError
+	}
+	submatch := rStateID.FindStringSubmatch(s)[1]
+	state.ID, err = strconv.Atoi(submatch)
 	if err != nil {
 		return state, err
 	}
