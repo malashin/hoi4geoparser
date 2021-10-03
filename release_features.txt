@@ -71,6 +71,7 @@ enable_custom_mapmode_state_buttons = yes -> Enable all states as buttons
 set_state_flag = custom_map_state_is_button -> Single state button flag (Do not use with effect above)
 disable_custom_mapmode_state_buttons = yes -> Disable all states as buttons
 set_state_flag = mapmode_state_click_disabled -> Gray out state and make it unclickable. Will no longer show highlight effect.
+set_country_flag = custom_map_mode_open_button_visible -> Show the independent open button outside of bespoke mapmode open calls.
 [/code]
 
 
