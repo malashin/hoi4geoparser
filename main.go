@@ -1,13 +1,17 @@
 package main
 
+// MODIFIED TO OUTPUT STATE CENTERS AS A CSV
 import (
 	"bufio"
+	"bytes"
+	_ "embed"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"io/ioutil"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -22,9 +26,12 @@ import (
 	bmp "github.com/jsummers/gobmp"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
+	"gopkg.in/yaml.v2"
 )
 
-var modPath = "c:/Users/admin/Documents/Paradox Interactive/Hearts of Iron IV/mod/oldworldblues"
+var modPath = "e:/Mod Repository/Hearts of Iron IV/mod/oldworldblues"
+var configPath = "config.yml"
+var hoi4Path string
 
 // var modPath = "d:/Games/SteamApps/common/Hearts of Iron IV"
 var definitionsPath = modPath + "/map/definition.csv"
@@ -34,24 +41,125 @@ var terrainPath = modPath + "/map/terrain.bmp"
 var heightmapPath = modPath + "/map/heightmap.bmp"
 var statesPath = modPath + "/history/states"
 var strategicRegionPath = modPath + "/map/strategicregions"
+var localModFilesPath = "./mod_path/"
+var gfxFilePath = localModFilesPath + "gfx/interface/gui/custom_map_mode"
+var atlasPath = "atlas0.png"
 var provincesIDMap = make(map[int]*Province)
 var provincesRGBMap = make(map[color.Color]*Province)
 var statesMap = make(map[int]*State)
 var strategicRegionMap = make(map[int]*StrategicRegion)
+var rComment = regexp.MustCompile(`(#.*)`)
 var rStateID = regexp.MustCompile(`(?:id[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateName = regexp.MustCompile(`(?:name[ \n\t]*?=[ \n\t]*?\"(.+?)\")`)
 var rStateManpower = regexp.MustCompile(`(?:manpower[ \n\t]*?=[ \n\t]*?(\d+))`)
-var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 ]+).*?})`)
+var rStateProvinces = regexp.MustCompile(`(?s:provinces[ \n\t]*?=[ \n\t]*?{.*?([0-9 \s]+).*?})`)
 var rStateInfrastructure = regexp.MustCompile(`(?:infrastructure[ \n\t]*?=[ \n\t]*?(\d+))`)
 var rStateImpassable = regexp.MustCompile(`(?:impassable[ \n\t]*?=[ \n\t]*?yes)`)
 var rSpace = regexp.MustCompile(`\s+`)
 var mapScalePixelToKm = 7.114
 var provincesImageSize image.Rectangle
 var waterColor = color.RGBA{68, 107, 163, 255}
+var atlasTileSize = image.Rectangle{image.Point{0, 0}, image.Point{512, 512}}
+
+/// Offsets for each texture index
+var atlasTextureMap = []image.Point{
+	image.Pt(0, 0), image.Pt(512, 0), image.Pt(1024, 0), image.Pt(1536, 0),
+	image.Pt(0, 512), image.Pt(512, 512), image.Pt(1024, 512), image.Pt(1536, 512),
+	image.Pt(0, 1024), image.Pt(512, 1024), image.Pt(1024, 1024), image.Pt(1536, 1024),
+	image.Pt(0, 1536), image.Pt(512, 1536), image.Pt(1024, 1536), image.Pt(1536, 1536),
+}
 var charWidth = 4
 var charHeight = 5
 var startTime time.Time
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
+
+//go:embed smallest_pixel-7.ttf
+var fontBytes []byte
+
+//go:embed alpha_mask.png
+var alphaMaskImage []byte
+
+//go:embed vanilla_terrain.png
+var vanilla_terrain_file []byte
+
+//var image_Size = 0.5
+var image_repeats int = 5
+var image_repeats_hash int = 3
+var colors = []color.NRGBA{}
+var hash_colors = []color.NRGBA{}
+var hash_scale float64 = 1.0
+var main_scale float64 = 1.0
+var readVanillaStates bool = false
+
+type Config struct {
+	ModPath           string  `yaml:"modPath"`
+	HoiPath           string  `yaml:"hoi4Path"`
+	MainScale         float64 `yaml:"mainScale"`
+	HashScale         float64 `yaml:"hashScale"`
+	ReadVanillaStates bool    `yaml:"readVanillaStates"`
+	Color             []struct {
+		R uint8 `yaml:"r"`
+		G uint8 `yaml:"g"`
+		B uint8 `yaml:"b"`
+		A uint8 `yaml:"a"`
+	} `yaml:"colors"`
+	HashColor []struct {
+		R uint8 `yaml:"r"`
+		G uint8 `yaml:"g"`
+		B uint8 `yaml:"b"`
+		A uint8 `yaml:"a"`
+	} `yaml:"hashColors"`
+}
+
+var defaultConfig = `
+modPath: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+hoi4Path: "C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV"
+mainScale: 1.0
+hashScale: 1.0
+readVanillaStates: false
+colors:
+  - color:
+    r: 24
+    g: 255
+    b: 214
+    a: 55
+  - color:
+    r: 135
+    g: 216
+    b: 148
+    a: 55
+  - color:
+    r: 226
+    g: 156
+    b: 22
+    a: 55
+  - color:
+    r: 34
+    g: 69
+    b: 255
+    a: 55
+  - color:
+    r: 255
+    g: 34
+    b: 238
+    a: 55
+hashColors:
+  - color:
+    r: 106
+    g: 228
+    b: 3
+    a: 255
+  - color:
+    r: 255
+    g: 245
+    b: 34
+    a: 255
+  - color:
+    r: 255
+    g: 34
+    b: 34
+    a: 255
+`
 
 // Province represents an in-game province with all parsed data in it.
 type Province struct {
@@ -72,6 +180,8 @@ type Province struct {
 	RenderColor     color.RGBA
 }
 
+var StateSizeFactor float64 = 60
+
 // State represents an in-game state with all parsed data in it.
 type State struct {
 	ID             int
@@ -84,6 +194,8 @@ type State struct {
 	PixelCoords    []image.Point
 	PixelCoordsMap map[image.Point]bool
 	CenterPoint    image.Point
+	CenterPointRec image.Point
+	StateSize      float64
 	Provinces      map[int]*Province
 	DistanceTo     map[int]int // Distance to other states.
 	AdjacentTo     map[int]*State
@@ -102,26 +214,97 @@ type StrategicRegion struct {
 	CenterPoint    image.Point
 }
 
+var TerrainAtlas map[int]*TerrainType
+
+type TerrainType struct {
+	color         int
+	texture_index int
+	texture_img   image.Image
+}
+
+func processError(err error) {
+	fmt.Printf("Error: %v", err)
+	fmt.Scanln()
+	panic(err)
+}
+func (c *Config) getConf() *Config {
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		defaultFile, err := os.Create(configPath)
+		if err != nil {
+			processError(err)
+		}
+		defer defaultFile.Close()
+		_, err = defaultFile.WriteString(defaultConfig)
+		if err != nil {
+			processError(err)
+		}
+		defaultFile.Sync()
+		fmt.Printf("Creating Config File, please exit and edit to preference")
+		fmt.Scanln()
+		os.Exit(0)
+	}
+	yamlFile, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		processError(err)
+	}
+	err = yaml.Unmarshal(yamlFile, c)
+	if err != nil {
+		processError(err)
+	}
+
+	return c
+}
+
 func main() {
 	// Track start time for benchmarking.
 	startTime = time.Now()
+	// Parse Config
+	var cfg Config
+	cfg.getConf()
+	for _, c := range cfg.Color {
+		colorNRGBA := color.NRGBA{c.R, c.G, c.B, c.A}
+		colors = append(colors, colorNRGBA)
+	}
+	for _, ch := range cfg.HashColor {
+		colorNRGBA := color.NRGBA{ch.R, ch.G, ch.B, ch.A}
+		hash_colors = append(hash_colors, colorNRGBA)
+	}
+	modPath = cfg.ModPath
+	hoi4Path = cfg.HoiPath
+	readVanillaStates = cfg.ReadVanillaStates
+	if cfg.MainScale > 0.01 {
+		main_scale = cfg.MainScale
+	}
+	if cfg.HashScale > 0.01 {
+		hash_scale = cfg.HashScale
+	}
+	fmt.Printf("Path to game: %v\n", hoi4Path)
+	fmt.Printf("Path to mod: %v\n", modPath)
+	if readVanillaStates {
+		fmt.Print("Utilizing vanilla history files when missing states\n")
+	}
+	fmt.Printf("Hash Colors: %v\n", hash_colors)
+	fmt.Printf("Main Colors %v\n", colors)
+	getModPaths(modPath, hoi4Path)
+	image_repeats = len(colors)
+	image_repeats_hash = len(hash_colors)
 
 	// Parse  definition.csv for provinces.
 	err := parseDefinitions()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse  adjacencies.csv for province connections and impassable borders.
 	err = parseAdjacencies()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse provinces.bmp for province adjacency.
 	err = parseProvinces()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Find the center points of each province.
@@ -130,7 +313,7 @@ func main() {
 	// Parse state files.
 	err = parseStateFiles()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse states provinces.
@@ -142,59 +325,112 @@ func main() {
 	// Parse state files.
 	err = parseStrategicRegionFiles()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
 
 	// Parse strategic regions provinces.
 	parseStrategicRegionsProvinces()
+	text := ""
+	if stringContains(os.Args, "debug") {
+		fmt.Print("Debug Mode\n")
+		text = "createCustomMapFiles"
+	} else {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print(`Enter maps to generate:
+		generateTerrainMaps
+		createCustomMapFiles
+		generateStateMaps
+		generateProvinceMaps
+		--------------------
 
-	// Write the output file.
+		`)
+		text, _ = reader.ReadString('\n')
+	}
 	err = saveGeoData()
 	if err != nil {
-		panic(err)
+		processError(err)
 	}
-
 	// // Generate state ID map.
-	// err = generateSateMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	if strings.Contains(text, "generateStateMaps") {
+		err = generateSateMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateColoredSateMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSateIDMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateInfrastructureMap()
+		if err != nil {
+			processError(err)
+		}
+		// Generate manpower map.
+		err = generateManpowerMap()
+		if err != nil {
+			processError(err)
+		}
+	}
+	if strings.Contains(text, "generateProvinceMaps") {
+		err = generateProvinceMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateProvinceIDMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSeaProvinceMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateSmallProvincesMap(32)
+		if err != nil {
+			processError(err)
+		}
+	}
+	if strings.Contains(text, "generateTerrainMaps") {
+		err = generateProvinceBasedHeightmapThresholdMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateProvinceBasedTerrainMap()
+		if err != nil {
+			processError(err)
+		}
+		err = generateImpassableMap()
+		if err != nil {
+			panic(err)
+		}
+	}
+	if strings.Contains(text, "createCustomMapFiles") {
+		// Write the output file.
+		err = createStatePngFiles()
+		if err != nil {
+			processError(err)
+		}
+		err = createStateCenterPointsCSV()
+		if err != nil {
+			processError(err)
+		}
 
-	// // Generate state ID map.
-	// err = generateColoredSateMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+		// ####################################################
+		// Disabled for this patch of the tool - Coming soon
+		// ####################################################
 
-	// // Generate state ID map.
-	// err = generateSateIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate province map.
-	// err = generateProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate province ID map.
-	// err = generateProvinceIDMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate manpower map.
-	// err = generateManpowerMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate sea province map.
-	// err = generateSeaProvinceMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
+		// createDebugTerrainType()
+		// err = parseTerrainTypes()
+		// if err != nil {
+		// 	processError(err)
+		// }
+		// err = createStateBackdrop()
+		// if err != nil {
+		// 	processError(err)
+		// }
+	}
 
 	// // Generate province-based terrain map.
 	// err = generateProvinceBasedTerrainMap()
@@ -204,18 +440,6 @@ func main() {
 
 	// // Generate province-based heightmap threshold map.
 	// err = generateProvinceBasedHeightmapThresholdMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate infrastructure map.
-	// err = generateInfrastructureMap()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Generate infrastructure map.
-	// err = generateSmallProvincesMap(32)
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -241,14 +465,54 @@ func main() {
 	// Print out elapsed time.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Elapsed time: %s\n", elapsedTime)
+	if stringContains(os.Args, "debug") {
+		fmt.Print("Debug Complete \n")
+	} else {
+		fmt.Scanln()
+	}
+}
+func getModPaths(pathToInstall string, pathToHoi4 string) {
+	definitionsPath = checkPath("/map/definition.csv", pathToInstall, pathToHoi4)
+	adjacenciesPath = checkPath("/map/adjacencies.csv", pathToInstall, pathToHoi4)
+	provincesPath = checkPath("/map/provinces.bmp", pathToInstall, pathToHoi4)
+	terrainPath = checkPath("/map/terrain.bmp", pathToInstall, pathToHoi4)
+	heightmapPath = checkPath("/map/heightmap.bmp", pathToInstall, pathToHoi4)
+	statesPath = checkPath("/history/states", pathToInstall, pathToHoi4)
+	strategicRegionPath = checkPath("/map/strategicregions", pathToInstall, pathToHoi4)
+}
+
+func checkPath(path string, pathToInstall string, pathToHoi4 string) string {
+	fullPath := pathToInstall + path
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		fullPath = pathToHoi4 + path
+		fmt.Printf("Mod version of %v not found, utilizing %v \n", path, fullPath)
+	}
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		fmt.Printf("Could not find %v Exiting \n", fullPath)
+		processError(err)
+	}
+	return fullPath
+}
+
+func stringContains(s []string, e string) bool {
+	for _, a := range s {
+		if strings.Contains(a, e) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReadLines reads a whole file
 // and returns a slice of its lines.
 func readLines(path string) ([]string, error) {
+	_, err := os.Stat(path)
+	if err != nil {
+		processError(err)
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		processError(err)
 	}
 	defer file.Close()
 
@@ -290,7 +554,7 @@ func parseDefinitions() error {
 func parseDefinitionsProvince(s string) (p Province, err error) {
 	pStrings := strings.Split(s, ";")
 	if len(pStrings) != 8 {
-		return p, errors.New("\"" + definitionsPath + "\": " + s + ": must contain 8 fields")
+		return p, errors.New("\"" + definitionsPath + "\": " + s + ": must contain 8 fields :: id:")
 	}
 
 	p.ID, err = strconv.Atoi(pStrings[0])
@@ -497,6 +761,22 @@ func findCenterPoint(coords []image.Point) image.Point {
 	// return image.Point{int(math.Round(float64(maxRect.Min.X+maxRect.Max.X) / 2)), int(math.Round(float64(maxRect.Min.Y+maxRect.Max.Y) / 2))}
 }
 
+func findAverageRadius(coords []image.Point, centerPoint image.Point) float64 {
+	var radiusCenter float64 = 1.0
+	for _, c := range coords {
+		//Find cord distance to coordinate point
+		rad := math.Sqrt(float64((c.X) ^ 2 + (c.Y) ^ 2))
+		//multiply
+		rad = math.Log(rad)
+		radiusCenter += rad
+		//fmt.Printf("radius of point: %v \n ", radiusCenter)
+	}
+	//Find geometric mean
+	radiusCenter = math.Exp(radiusCenter / float64(len(coords)))
+	//fmt.Printf("radius of state: %v \n Done State \n", radiusCenter)
+	return radiusCenter
+}
+
 func findLargestRectangle(hist []int) (int, int, int, int) {
 	var h, pos, tempH, tempPos int
 	var xStart, xEnd, yStart int
@@ -548,13 +828,46 @@ func parseStateFiles() error {
 	}
 	for _, s := range stateFiles {
 		state, err := parseState(s)
+		if errors.Is(err, errStateEmptyError) {
+			fmt.Printf("State is empty, skipping %v \n", s)
+		} else if err != nil {
+			return err
+		} else {
+			if _, ok := statesMap[state.ID]; !ok {
+				statesMap[state.ID] = &state
+			} else {
+				fmt.Printf("Duplicate state file found: %v\n", state.ID)
+			}
+		}
+	}
+	if readVanillaStates {
+		fmt.Print("Reading vanilla histoy\n")
+		stateFiles, err = filepath.Glob(filepath.FromSlash(hoi4Path+"/history/states") + string(os.PathSeparator) + "*.txt")
 		if err != nil {
 			return err
 		}
-		statesMap[state.ID] = &state
+		//Iterate through vanilla states
+		for _, s := range stateFiles {
+			state, err := parseState(s)
+			if errors.Is(err, errStateEmptyError) {
+				fmt.Printf("State is empty, skipping %v \n", s)
+			} else if err != nil {
+				return err
+			} else {
+				// if not in map, add this state to the map
+				if _, ok := statesMap[state.ID]; !ok {
+					fmt.Printf("Adding state from vanilla: %v\n", state.ID)
+					statesMap[state.ID] = &state
+				} else {
+					fmt.Printf("Duplicate state file found in vanilla: %v\n", state.ID)
+				}
+			}
+		}
 	}
 	return nil
 }
+
+var errStateEmptyError = errors.New("state empty")
 
 func parseState(path string) (state State, err error) {
 	b, err := ioutil.ReadFile(path)
@@ -562,8 +875,12 @@ func parseState(path string) (state State, err error) {
 		return state, err
 	}
 	s := strings.Replace(string(b), "\r\n", "\n", -1)
-
-	state.ID, err = strconv.Atoi(rStateID.FindStringSubmatch(s)[1])
+	s = rComment.ReplaceAllLiteralString(s, "")
+	if strings.TrimSpace(s) == "" {
+		return state, errStateEmptyError
+	}
+	submatch := rStateID.FindStringSubmatch(s)[1]
+	state.ID, err = strconv.Atoi(submatch)
 	if err != nil {
 		return state, err
 	}
@@ -579,6 +896,7 @@ func parseState(path string) (state State, err error) {
 		if err != nil {
 			return state, err
 		}
+
 	}
 
 	r = rStateInfrastructure.FindStringSubmatch(s)
@@ -587,6 +905,7 @@ func parseState(path string) (state State, err error) {
 		if err != nil {
 			return state, err
 		}
+
 	}
 
 	r = rStateImpassable.FindStringSubmatch(s)
@@ -596,12 +915,17 @@ func parseState(path string) (state State, err error) {
 
 	state.Provinces = make(map[int]*Province)
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
+	//fmt.Printf("Provinces: %v", provinces)
 	for _, p := range provinces {
-		pID, err := strconv.Atoi(p)
-		if err != nil {
-			return state, err
+		if len(p) > 0 {
+			pID, err := strconv.Atoi(p)
+
+			if err != nil {
+				fmt.Printf("Error in state: %v", state)
+				return state, err
+			}
+			state.Provinces[pID] = provincesIDMap[pID]
 		}
-		state.Provinces[pID] = provincesIDMap[pID]
 	}
 	state.Continent = -1
 	state.PixelCoordsMap = make(map[image.Point]bool)
@@ -609,7 +933,6 @@ func parseState(path string) (state State, err error) {
 	state.AdjacentTo = make(map[int]*State)
 	state.ConnectedTo = make(map[int]*State)
 	state.ImpassableTo = make(map[int]*State)
-
 	return state, nil
 }
 
@@ -660,7 +983,7 @@ func parseStatesProvinces() {
 		// Find the center point of the state.
 		// fmt.Printf("%s: Calculating states center point coordinates...\n", time.Since(startTime))
 		s1.CenterPoint = findCenterPoint(s1.PixelCoords)
-
+		s1.StateSize = findAverageRadius(s1.PixelCoords, s1.CenterPoint)
 		// If state has provinces with non-empty impassableTo field.
 		// Check if all provinces adjacent to another state are impassable to it.
 		// If that's the case, then add this state to impassableTo filed of the first sate.
@@ -721,6 +1044,7 @@ func parseStrategicRegionFiles() error {
 	for _, r := range strategicRegionFiles {
 		strategicRegion, err := parseStrategicRegion(r)
 		if err != nil {
+			fmt.Printf("Error in Region: %v", strategicRegion)
 			return err
 		}
 		strategicRegionMap[strategicRegion.ID] = &strategicRegion
@@ -747,12 +1071,16 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 
 	strategicRegion.Provinces = make(map[int]*Province)
 	provinces := strings.Split(strings.TrimSpace(rSpace.ReplaceAllString(rStateProvinces.FindStringSubmatch(s)[1], " ")), " ")
+	//fmt.Printf("Strat Provinces for %v: %v", strategicRegion.ID, provinces)
 	for _, p := range provinces {
-		pID, err := strconv.Atoi(p)
-		if err != nil {
-			return strategicRegion, err
+		if len(p) > 0 {
+			pID, err := strconv.Atoi(p)
+			if err != nil {
+				fmt.Printf("%v had an error at %v", strategicRegion.ID, p)
+				return strategicRegion, err
+			}
+			strategicRegion.Provinces[pID] = provincesIDMap[pID]
 		}
-		strategicRegion.Provinces[pID] = provincesIDMap[pID]
 	}
 
 	strategicRegion.PixelCoordsMap = make(map[image.Point]bool)
@@ -763,6 +1091,8 @@ func parseStrategicRegion(path string) (strategicRegion StrategicRegion, err err
 func parseStrategicRegionsProvinces() {
 	fmt.Printf("%s: Parsing provinces in each strategic region...\n", time.Since(startTime))
 	for _, r := range strategicRegionMap {
+		//fmt.Printf("Finished: %v \n", r.ID)
+		//fmt.Printf("Provinces in %v: %v \n", r.ID, r.Provinces)
 		for _, p := range r.Provinces {
 			// Fill in each strategic regions pixel coordinates.
 			for _, pc := range p.PixelCoords {
@@ -831,7 +1161,7 @@ func saveGeoData() error {
 			// Iterate over all states from ImpassableTo map in ID sorted order.
 			for _, aID := range statesImpassableToIDs {
 				// Write the impassable_to@STATE variables.
-				_, err = f.WriteString("\t\t\t\tset_variable = { impassable_to@" + strconv.Itoa(aID) + " = 1 }\n")
+				_, err = f.WriteString("\t\t\t\tset_variable = { impassable_to" + strconv.Itoa(aID) + " = 1 }\n")
 				if err != nil {
 					return err
 				}
@@ -1159,10 +1489,6 @@ func generateSateIDMap() error {
 
 func initFont(img *image.RGBA) (*freetype.Context, error) {
 	// Read the font data.
-	fontBytes, err := ioutil.ReadFile("smallest_pixel-7.ttf")
-	if err != nil {
-		return nil, err
-	}
 	f, err := freetype.ParseFont(fontBytes)
 	if err != nil {
 		return nil, err
@@ -2138,4 +2464,349 @@ func containsPoint(s []image.Point, a image.Point) bool {
 		}
 	}
 	return false
+}
+
+var csvFileContents []string
+
+func createStateCenterPointsCSV() error {
+	fmt.Printf("%s: Generating CSV output for state centers...\n", time.Since(startTime))
+	local_path := localModFilesPath + "/common/on_actions"
+	_, err := os.Stat(local_path)
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll(local_path, 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	f, err := os.Create(local_path + "/state_centers_on_actions.txt")
+	defer f.Close()
+	if err != nil {
+		log.Fatalln("failed to open file", err)
+	}
+	csvFileContents = append(csvFileContents, `
+	on_actions = {
+		on_startup = {
+			effect = {
+	`)
+	for _, s := range statesMap {
+		id := fmt.Sprintf("%v", s.ID)
+		centerX := fmt.Sprintf("%v", s.CenterPointRec.X)
+		centerY := fmt.Sprintf("%v", s.CenterPointRec.Y)
+		//rowSlice := []string{id, centerX, centerY}
+		rowSlice := fmt.Sprintf(`
+			%[1]v = {
+				set_variable = { map_x_position = %[2]v }
+				set_variable = { map_y_position = %[3]v }
+			}
+		`, id, centerX, centerY)
+		csvFileContents = append(csvFileContents, rowSlice)
+	}
+	csvFileContents = append(csvFileContents, `
+			}
+		}
+	}
+	`)
+	for _, w := range csvFileContents {
+		_, err := f.WriteString(w)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return nil
+}
+
+var fileContents []string
+
+var fileHeader string = `
+### Autogenerated file. Please regenerate through hoi4geoparser.
+
+spriteTypes = {
+	`
+var spriteHeader = `spriteType = {
+	name = "GFX_custom_map_state_image_`
+var spriteTexture = `
+	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_`
+var spriteEffect = `
+	effectFile = "gfx/FX/stateshape.lua"
+`
+var spriteTextureHashed = `
+	textureFile = "gfx/interface/gui/custom_map_mode/state_images/state_image_hashed_`
+var spriteFrames = `
+	noOfFrames = `
+var spriteFooter = `
+	transparencecheck = yes
+}
+
+`
+
+func createStatePngFiles() error {
+	fmt.Printf("%s: Creating state images! \n", time.Since(startTime))
+	local_path := gfxFilePath + "/state_images"
+	// Set up folder
+	_, err := os.Stat(local_path)
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll(local_path, 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	fileContents = append(fileContents, fileHeader)
+	// Loop!
+	fmt.Printf("%s: Generating State Images for %v states using %v colors\n", time.Since(startTime), len(statesMap), len(colors))
+	// We want to tile the mask to the size of our image
+	maskImgSlice, err := png.Decode(bytes.NewReader(alphaMaskImage))
+	if err != nil {
+		processError(err)
+	}
+	maskImgSize := image.Rect(0, 0, provincesImageSize.Dx(), provincesImageSize.Dy())
+	maskImg := image.NewRGBA(maskImgSize)
+	tile_x := provincesImageSize.Max.X / maskImgSlice.Bounds().Max.X
+	tile_y := provincesImageSize.Max.Y / maskImgSlice.Bounds().Max.Y
+	for tile := 0; tile < tile_x; tile++ {
+		offsetX := (tile * maskImgSlice.Bounds().Max.X) + 1
+		for tileH := 0; tileH < tile_y; tileH++ {
+			offsetY := (tileH * maskImgSlice.Bounds().Max.Y) + 1
+			draw.Draw(maskImg, image.Rect(offsetX, offsetY, offsetX+maskImgSlice.Bounds().Dx(), offsetY+maskImgSlice.Bounds().Dy()), maskImgSlice, image.Pt(0, 0), draw.Src)
+		}
+	}
+	fmt.Printf("Iterating.....\n")
+	for _, s := range statesMap {
+		// Find largest dimension
+		var xMin int = s.PixelCoords[0].X
+		var xMax int
+		var yMin int = s.PixelCoords[0].Y
+		var yMax int
+		for _, c := range s.PixelCoords {
+			if c.X < xMin {
+				xMin = c.X
+			}
+			if c.X > xMax {
+				xMax = c.X
+			}
+			if c.Y < yMin {
+				yMin = c.Y
+			}
+			if c.Y > yMax {
+				yMax = c.Y
+			}
+		}
+		xRange := xMax - xMin
+
+		// add 2x more space onto the end to create a strip
+		imgSize := image.Rect(xMin, yMin, (xMax + (image_repeats-1)*(xRange+1) + 1), yMax+1)
+		widthX := (xRange + 1) / 2
+		heightY := (yMax - yMin + 1) / 2
+		s.CenterPointRec = image.Point{widthX + xMin, heightY + yMin}
+		img := image.NewRGBA(imgSize)
+		alphaCol := color.RGBA{0, 0, 0, 0}
+		draw.Draw(img, img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
+		// We want the hash to start the same as the image
+		hashSize := image.Rect(xMin, yMin, (xMax + (image_repeats_hash-1)*(xRange+1)), yMax)
+		hash_img := image.NewRGBA(hashSize)
+		draw.Draw(hash_img, hash_img.Bounds(), &image.Uniform{alphaCol}, image.Pt(0, 0), draw.Src)
+		// Iterate through main images
+		for tileNumber := 0; tileNumber < image_repeats; tileNumber++ {
+			offset_X := (xRange + 1) * tileNumber
+			for _, p := range s.PixelCoords {
+				img.Set(p.X+offset_X, p.Y, colors[tileNumber])
+				// Set up borders
+				_, exists := s.PixelCoordsMap[image.Point{p.X + 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X - 1, p.Y}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y + 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+				_, exists = s.PixelCoordsMap[image.Point{p.X, p.Y - 1}]
+				if !exists {
+					img.Set(p.X+offset_X, p.Y, color.Black)
+				}
+			}
+		}
+		/// Iterate through hash images
+		for tileNumber := 0; tileNumber < image_repeats_hash; tileNumber++ {
+			offset_X := (xRange + 1) * tileNumber
+			//fmt.Printf("TileNumer: %v, Tiles %v OffsetX %v size %v \n", tileNumber, image_repeats, offset_X, img.Bounds().Size().X)
+			//offset_Y := ()
+			for _, p := range s.PixelCoords {
+				hash_img.Set(p.X+offset_X, p.Y, hash_colors[tileNumber])
+			}
+		}
+		idString := fmt.Sprintf("%v", s.ID)
+		out, err := os.Create((local_path + "/state_image_" + idString + ".png"))
+		if err != nil {
+			processError(err)
+		}
+		defer out.Close()
+		//Disgusting type casting because i don't know how to do it otherwise
+		xScale_O := int(math.Round(float64(img.Bounds().Dx()) * main_scale))
+		YScale_O := int(math.Round(float64(img.Bounds().Dy()) * main_scale))
+		if main_scale != 1.0 {
+			scaledOriginal := image.NewNRGBA(image.Rect(0, 0, xScale_O, YScale_O))
+			draw.NearestNeighbor.Scale(scaledOriginal, scaledOriginal.Rect, img, img.Rect, draw.Over, nil)
+			err = png.Encode(out, scaledOriginal)
+		} else {
+			err = png.Encode(out, img)
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		out.Close()
+		//Encode a scaled-down hashed version of the slices
+		xScale_H := int(math.Round(float64(hash_img.Bounds().Dx()) * hash_scale))
+		YScale_H := int(math.Round(float64(hash_img.Bounds().Dy()) * hash_scale))
+		scaledHash := image.NewNRGBA(image.Rect(0, 0, xScale_H, YScale_H))
+		//Decode packed mask
+		//maskImg := image.NewNRGBA(image.Rect(0, 0, 500, 500))
+		//draw.Draw(maskImg, maskImg.Rect, &image.Uniform{color.Opaque}, image.Pt(0, 0), draw.Src)
+
+		//Apply mask image
+		dest_img := image.NewNRGBA(hash_img.Rect)
+		draw.DrawMask(dest_img, dest_img.Rect, hash_img, hash_img.Rect.Min, maskImg, image.Pt(0, 0), draw.Over)
+		//Testing mask
+		//draw.Draw(dest_img, dest_img.Rect, maskImg, hash_img.Rect.Min, draw.Over)
+		draw.NearestNeighbor.Scale(scaledHash, scaledHash.Rect, dest_img, dest_img.Rect, draw.Over, nil)
+		scaleOut, err := os.Create((local_path + "/state_image_hashed_" + idString + ".png"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer scaleOut.Close()
+		png.Encode(scaleOut, scaledHash)
+		scaleOut.Close()
+		// create slice of file
+		fileSection := spriteHeader + idString + "\"\n" + spriteTexture + idString + ".png\"" + spriteEffect + spriteFrames + fmt.Sprintf("%v", image_repeats) + spriteFooter
+		fileSectionHash := spriteHeader + "hashed_" + idString + "\"\n" + spriteTextureHashed + idString + ".png\"" + spriteEffect + spriteFrames + fmt.Sprintf("%v", image_repeats_hash) + spriteFooter
+		fileContents = append(fileContents, fileSection)
+		fileContents = append(fileContents, fileSectionHash)
+		fmt.Printf("State %v finished!\n", s.ID)
+	}
+	fileContents = append(fileContents, "\n}")
+	local_path = localModFilesPath + "/interface"
+	// Set up folder
+	_, err = os.Stat(local_path)
+	if os.IsNotExist(err) {
+		errDir := os.MkdirAll(local_path, 0755)
+		if errDir != nil {
+			log.Fatal(err)
+		}
+
+	}
+	f, err := os.Create(local_path + "/custom_states_generated_state_images.gfx")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	for _, w := range fileContents {
+		_, err := f.WriteString(w)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	f.Close()
+	fmt.Print("GFX file finished\n")
+	vanillaImage, _ := png.Decode(bytes.NewReader(vanilla_terrain_file))
+	vanillaFile, err := os.Create(gfxFilePath + "/big_map_bg.png")
+	if err != nil {
+		processError(err)
+	}
+	png.Encode(vanillaFile, vanillaImage)
+	fmt.Print("Vanilla Background Saved\n")
+	return nil
+}
+func createDebugTerrainType() {
+	var terrain TerrainType
+	terrain.color = 3
+	img, err := createTerrainImage(atlasTextureMap[1])
+	terrain.texture_img = img
+	terrain.texture_index = 0
+	if err != nil {
+		processError(err)
+	}
+}
+func parseTerrainTypes() error {
+	// Open terrain image
+	terrainFile, err := os.Open(filepath.FromSlash(terrainPath))
+	if err != nil {
+		return err
+	}
+	defer terrainFile.Close()
+	terrainImage, err := bmp.DecodeConfig(terrainFile)
+	if err != nil {
+		return err
+	}
+	terrainColors, ok := terrainImage.ColorModel.(color.Palette)
+	if ok {
+		fmt.Printf("BMP Color index 0: %v\n", terrainColors[0])
+	} else {
+		fmt.Print("Not a palette")
+	}
+	return nil
+}
+
+/// Input a point described in the atlasTextureMap, 0-15 > x,y
+func createTerrainImage(textureIndex image.Point) (image.Image, error) {
+	//Open Atlas
+	reader, err := os.Open(atlasPath)
+	if err != nil {
+		fmt.Print("Atlas Texture Missing")
+		processError(err)
+	}
+	defer reader.Close()
+	atlasImage, _, err := image.Decode(reader)
+	if err != nil {
+		processError(err)
+	}
+	//Pull tile from atlas
+	tileR := atlasTileSize.Add(textureIndex)
+	tileImg, err := cropImage(atlasImage, tileR)
+	// new image
+	atlasOverlay := image.NewNRGBA(provincesImageSize)
+	var atlasTileX int = int(math.Ceil(float64(provincesImageSize.Size().X) / float64(atlasTileSize.Size().X)))
+	var atlasTileY int = int(math.Ceil(float64(provincesImageSize.Size().Y) / float64(atlasTileSize.Size().Y)))
+	fmt.Printf("X size %v, Y size %v \n", atlasTileX, atlasTileY)
+	//drawPoint := image.Pt(0, 0)
+	r := tileImg.Bounds()
+	for x := 0; x < atlasTileX; x++ {
+		for y := 0; y < atlasTileY; y++ {
+			fmt.Println(r)
+			//drawPoint.Add(image.Pt(atlasTileSize.Size().X*x, atlasTileSize.Size().Y*y))
+			fmt.Printf("Drawing rectangle at %v moved by %v \n", r, atlasTileSize.Size())
+			draw.Draw(atlasOverlay, r, tileImg, image.Pt(0, 0), draw.Src)
+			// add across by atlas tile y
+			r = r.Add(image.Point{0, atlasTileSize.Size().Y})
+		}
+		// make a new rect starting at the old max, then add the tile size for new max, 0 out Y location
+		r = image.Rect(r.Max.X, 0, atlasTileSize.Max.X+r.Max.X, atlasTileSize.Max.Y)
+	}
+	// Write atlas output (DEBUG)
+	writer, err := os.Create("atlas_output.png")
+	if err != nil {
+		processError(err)
+	}
+	png.Encode(writer, atlasOverlay)
+	return atlasOverlay, nil
+}
+func cropImage(img image.Image, crop image.Rectangle) (image.Image, error) {
+	type subImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	// img is an Image interface. This checks if the underlying value has a
+	// method called SubImage. If it does, then we can use SubImage to crop the
+	// image.
+	simg, ok := img.(subImager)
+	if !ok {
+		return nil, fmt.Errorf("image does not support cropping")
+	}
+
+	return simg.SubImage(crop), nil
 }

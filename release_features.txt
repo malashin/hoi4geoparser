@@ -1,0 +1,104 @@
+Custom Map Modes Utility
+
+Vanilla Version
+
+Create custom map modes for any state or country-based variables in your mod! Supports three colors, text, and centered country icons or name plates. Use effects found in the scripted effects file to render the map and generate necessary information for display. 
+
+It just takes three easy steps:
+Quickstart Guide:
+
+1. Set this mod as a dependency for your vanilla mod
+
+2. Add an on_action in common/on_actions with an on_startup like below:
+[code] on_startup = {
+        effect = {
+            1 = {
+                add_to_array = { global.filter_arrays = [YOUR FILTER INDEX] }
+                        }
+                }
+}
+[/code]
+3. Localize your filter in a localisation file
+[code]custom_map_mode_filter_name_[YOUR FILTER INDEX]:0 "My Custom Filter"[/code]
+
+3.5 Localize state tooltips if you would like!
+[code]custom_map_mode_state_tooltip_[YOUR FILTER INDEX]:0 "Filter State Tooltip"
+custom_map_mode_state_tooltip_delayed_[YOUR FILTER INDEX]:0 "Filter State Delayed Tooltip"
+[/code]
+
+4. Populate your filter using a scripted effect in common/scripted_effects:
+[code]
+custom_map_mode_filter_initialize_[YOUR FILTER INDEX] = {
+  find_color_graph = yes
+  for_each_scope_loop = {
+      array = global.states
+      OWNER = { set_variable = { PREV.state_frame_number = custom_map_color } }
+      set_state_flag = mapmode_state_visible
+  }
+}
+[/code]
+4.5 Add a button effect:
+[code]
+custom_map_mode_filter_click_[YOUR FILTER INDEX] = {
+	ROOT = {
+		launch_nuke = {
+			state = PREV
+			controller = ROOT
+			use_nuke = no
+		}
+	}
+}
+[/code]
+This example creates a color-graph for countries making sure no two bordering nations share a color. If you click on a state, it will nuke a random province!
+
+Function Reference:
+[code]
+global.states -> All of the states in the map function
+find_color_graph = yes -> Creates country colors so no neighbors share a color 
+assign_owner_color_to_state = yes -> Use Owner color for states
+assign_controller_color_to_state = yes -> Use Controller color for states
+set_state_flag = mapmode_state_hashed_visible -> State has hashed texture
+set_state_flag = mapmode_state_visible -> State has normal texture visible
+state_frame_number_hashed -> Frame (Color) for hashed state texture
+state_frame_number -> Frame (Color) for normal state texture
+calculate_country_center_point_quick_all = yes -> Find the rough centerpoint of every nation
+set_country_flag = mapmode_shield_visible -> Show shield for a nation (Country Scope)
+calculate_country_shield_capital_all = yes -> Use capital state for country flag instead of centerpoint
+set_state_flag = info_text_visible -> Show info text
+set_state_flag = custom_mapmode_tooltip -> Show tooltip on hover
+set_state_flag = custom_mapmode_tooltip_delayed -> Show delayed tooltip on hover
+enable_custom_mapmode_state_buttons = yes -> Enable all states as buttons
+set_state_flag = custom_map_state_is_button -> Single state button flag (Do not use with effect above)
+disable_custom_mapmode_state_buttons = yes -> Disable all states as buttons
+set_state_flag = mapmode_state_click_disabled -> Gray out state and make it unclickable. Will no longer show highlight effect.
+set_country_flag = custom_map_mode_open_button_visible -> Show the independent open button outside of bespoke mapmode open calls.
+[/code]
+
+
+Define custom RGBA colors for solid and hashed image styles by editing the config and running the geoparser.exe
+
+Please download the utility on github to generate the necessary image files for your mod. 
+
+https://github.com/ICodeMaster/hoi4geoparser
+
+
+
+Current Features:
+- Supports easy implementation with a single effect and filter name string
+- Allows generation of any number of colors to use for mapmodes!
+- Easy configuration options and portable .exe
+- Supports country shields and country-level coloring
+- Add tertiary text to states on the map with a simple flag and text string
+- Hashed state overlays to display 2 types of data at once
+- Supported scaling of state images to save memory and mod size
+- Create button effects that run in state scope
+- Add tooltips to states in state scope
+- Disable/grey buttons when not needed
+
+
+Future Plans:
+- Re-add functional Zoom buttons
+- Add an automatically generated ledger gui
+
+Discord:
+https://discord.gg/YRDWKbyw3X
